@@ -1,1 +1,0 @@
-./grid_multipoles -box 1000 -scale 1 -rmax 100 -ngrid 40 -in /tigress/ophilcox/hipster_data/quijote_halos_1.txt
