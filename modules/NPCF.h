@@ -10,9 +10,14 @@ class NPCF {
   public:
     uint64 bincounts[NBIN];
     Float binweight[NBIN];
-    // Array to hold the 3PCF
-    Float threepcf[NBIN][NBIN][ORDER+1];
     int map[MAXORDER+1][MAXORDER+1][MAXORDER+1];   // The multipole index of x^a y^b z^c
+
+    // Array to hold the 3PCF
+    //TODO: could just use non-empty bins here
+    Float threepcf[NBIN][NBIN][ORDER+1];
+
+    // Array to hold the 4PCF (some bins will violate triangle condition and be empty
+    Float fourpcf[NBIN][NBIN][NBIN][ORDER+1][ORDER+1][ORDER+1];
 
     void make_map() {
 	// Construct the index number in our multipoles for x^a y^b z^c
@@ -34,12 +39,21 @@ class NPCF {
 	    bincounts[i] = 0;
 	    binweight[i] = 0.0;
 	    for (int j=0; j<NBIN; j++) {
-		for (int k=0; k<=ORDER; k++) {
-		    threepcf[i][j][k] = 0.0;
-		}
-	    }
-	}
-	return;
+    		for (int l_i=0; l_i<=ORDER; l_i++) {
+    		    threepcf[i][j][l_i] = 0.0;
+    		}
+        #ifdef FOURPCF
+        for (int k=0; k<NBIN; k++){
+          for (int l_i=0; l_i<=ORDER; l_i++){
+            for(int l_j=0;l_j<=ORDER; l_j++){
+              for(int l_k=0;l_k<=ORDER;l_k++) fourpcf[i][j][k][l_i][l_j][l_k] = 0.0;
+            }
+          }
+        }
+        #endif
+	     }
+	       }
+	    return;
     }
 
     NPCF() {
@@ -56,9 +70,18 @@ class NPCF {
 	    bincounts[i] += c->bincounts[i];
 	    binweight[i] += c->binweight[i];
 	    for (int j=0; j<NBIN; j++) {
-		for (int k=0; k<=ORDER; k++) {
-		    threepcf[i][j][k] += c->threepcf[i][j][k];
+		for (int l_i=0; l_i<=ORDER; l_i++) {
+		    threepcf[i][j][l_i] += c->threepcf[i][j][l_i];
 		}
+    #ifdef FOURPCF
+    for (int k=0; k<NBIN; k++){
+      for (int l_i=0; l_i<=ORDER; l_i++){
+        for(int l_j=0;l_j<=ORDER; l_j++){
+          for(int l_k=0;l_k<=ORDER;l_k++) fourpcf[i][j][k][l_i][l_j][l_k] += c->fourpcf[i][j][k][l_i][l_j][l_k];
+        }
+      }
+    }
+    #endif
 	    }
 	}
     }
@@ -82,11 +105,16 @@ class NPCF {
 	    printf("\n");
 	    }
 	}
+  #ifdef FOURPCF
+  printf("##TODO: Add 4PCF Here\n");
+  #endif
     }
 
     void save_power(char* out_string, Float rmax) {
       // Print the output NPCF counts to file
 
+      // SAVE 3PCF
+      
       // First create output files
        char out_name[1000];
         snprintf(out_name, sizeof out_name, "output/%s_3pcf.txt", out_string);
@@ -116,6 +144,11 @@ class NPCF {
        fclose(OutFile);
 
        printf("\nOutput saved to %s\n",out_name);
+
+       #ifdef FOURPCF
+       printf("##TODO: Add 4PCF Here\n");
+       #endif
+
      }
 
 

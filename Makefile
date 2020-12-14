@@ -4,7 +4,7 @@
 
 # If you want to run with multi-threading, uncomment the following two lines
 CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
-CXXFLAGS = -O3
+CXXFLAGS = -O3 -DFOURPCF
 #-DOPENMP
 #-DFOURPCF
 #-DPERIODIC

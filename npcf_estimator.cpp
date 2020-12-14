@@ -299,6 +299,12 @@ int main(int argc, char *argv[]) {
     printf("Bins = %d\n", NBIN);
     printf("Order = %d\n", ORDER);
     assert(ORDER<=MAXORDER);   // Actually, this will run, but it would give silent zeros.
+  #ifdef FOURPCF
+    printf("4PCF: Yes\n");
+  #else
+    printf("4PCF: No\n");
+  #endif
+    printf("\n");
 
     Particle *orig_p;
     Float3 shift;
@@ -318,15 +324,34 @@ int main(int argc, char *argv[]) {
     if (qinvert) invert_weights(orig_p, np);
     if (qbalance) balance_weights(orig_p, np);
 
+    //TODO: Maybe just read these weights from a file + pre-compute for ell up to MAXORDER?
+
     // Compute the NPCF weights using the array of (squared) a_lm normalizations
-    //TODO: maybe precompute this?
-    // Now include the additional factor of (-1)^l / Sqrt(2l+1) and *2 for m != 0 mode (from m -> -m symmetry)
+    // First create 3PCF weights with the additional factor of (-1)^l / Sqrt(2l+1) and *2 for m != 0 mode (from m -> -m symmetry)
     for(int ell=0, n=0; ell<=ORDER; ell++){
       for(int m=0; m<=ell; m++, n++){
-          weight3pcf[n] = almnorm[n]*pow(-1.,ell)/sqrt(2.*ell+1.);
-          if(m!=0) weight3pcf[n] *= 2.0;
-        }
+          weight3pcf[n] = almnorm[n]*threepcf_all[n]; //pow(-1.,ell)/sqrt(2.*ell+1.)*(2 if m1!=0);
+          }
     }
+    #ifdef FOURPCF
+    // Now add 4PCF weights
+    int ct=0;
+    int m3;
+    for(int l1=0; l1<=ORDER; l1++){ // ct indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
+      for(int l2=0; l2<=ORDER; l2++){
+        for(int l3=fmax(0,fabs(l1-l2));l3<=fmin(ORDER,l1+l2);l3++){
+          for(int m1=0; m1<=l1; m1++){
+            for(int m2=0; m2<=l2; m2++,ct++){
+              m3 = -m1-m2;
+              weight4pcf[ct] = sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m3])*fourpcf_all[l1*(l1+1)/2+m1][l2*(l2+1)/2+m2][l3];
+            }
+          }
+        }
+      }
+    }
+    printf("Finished computing 4PCF weights in %d bins\n",ct);
+    abort();
+    #endif
 
     // Now ready to compute!
     // Sort the particles into the grid.
