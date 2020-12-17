@@ -20,7 +20,7 @@
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10.
-#define ORDER 3
+#define ORDER 10
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!
@@ -324,33 +324,56 @@ int main(int argc, char *argv[]) {
     if (qinvert) invert_weights(orig_p, np);
     if (qbalance) balance_weights(orig_p, np);
 
-    //TODO: Maybe just read these weights from a file + pre-compute for ell up to MAXORDER?
-
     // Compute the NPCF weights using the array of (squared) a_lm normalizations
+
     // First create 3PCF weights with the additional factor of (-1)^l / Sqrt(2l+1) and *2 for m != 0 mode (from m -> -m symmetry)
+
+    // First initialize this to zero for safety
+    for(int x=0; x<NLM; x++) weight3pcf[x] = 0.;
+
     for(int ell=0, n=0; ell<=ORDER; ell++){
       for(int m=0; m<=ell; m++, n++){
-          weight3pcf[n] = almnorm[n]*threepcf_all[n]; //pow(-1.,ell)/sqrt(2.*ell+1.)*(2 if m1!=0);
-          }
+          // Add coupling weight, alm normalizations and symmetry factor of 2 unless m1=m2=0
+          // The (-1)^m factor comes from replacing a_{l-m} with its conjugate a_{lm}* later.
+          // This cancels with another (-1)^m factor in the coupling
+          weight3pcf[n] = 2.*almnorm[n]*threepcf_coupling[n]*pow(-1.,m);
+          if (m==0) weight3pcf[n] /= 2.;
+        }
     }
     #ifdef FOURPCF
-    // Now add 4PCF weights
-    int ct=0;
-    int m3;
-    for(int l1=0; l1<=ORDER; l1++){ // ct indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
+
+
+    // We start by initializing them to zero
+    for(int x=0; x<NLM*NLM*(ORDER+1); x++){
+      weight4pcf1[x] = 0.0;
+      weight4pcf2[x] = 0.0;
+    }
+
+    // Now load 4PCF weight matrices
+    for(int l1=0, n=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
       for(int l2=0; l2<=ORDER; l2++){
         for(int l3=fmax(0,fabs(l1-l2));l3<=fmin(ORDER,l1+l2);l3++){
+          // We need to sum from m1=0 to l1 here. The second matrix is only non-zero for m1, m2 > 0.
           for(int m1=0; m1<=l1; m1++){
-            for(int m2=0; m2<=l2; m2++,ct++){
-              m3 = -m1-m2;
-              weight4pcf[ct] = sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m3])*fourpcf_all[l1*(l1+1)/2+m1][l2*(l2+1)/2+m2][l3];
+            for(int m2=0; m2<=l2; m2++,n++){
+
+              // First set of weights: 2 * coupling[l1,l2,l3,m1,m2,-m1-m2] * (-1)^{m1+m2} * sym(m1, m2), with sym(a,b) = 1/2 if a=b and zero else (see LaTeX for this).
+              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
+              weight4pcf1[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m1+m2])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
+              if((m1==0)&&(m2==0)) weight4pcf1[n]/=2.;
+
+              // Second set of weights: 2 * coupling[l1,l2,l3,m1,-m2,m2-m1] * (-1)^{m2} (see LaTeX for this).
+              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
+              // Note this is zero for m1=0 and/or m2=0
+              if((m1>0)&&(m2>0)){
+                weight4pcf2[n] = 2.*pow(-1.,m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+int(fabs(m2-m1))])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2-m2][l3];
+                if(m2<m1) weight4pcf2[n] *= pow(-1.,m1-m2); // absorbing later factor for efficiency
+              }
             }
           }
         }
       }
     }
-    printf("Finished computing 4PCF weights in %d bins\n",ct);
-    abort();
     #endif
 
     // Now ready to compute!
@@ -396,8 +419,8 @@ int main(int argc, char *argv[]) {
     printf("\n# Binned weighted pair counts, monopole and quadrupole\n");
     pairs[0].report_pairs();
 
-    printf("\n# Multipole power\n");
-    npcf[0].report_power();
+    //printf("\n# Multipole power\n");
+    //npcf[0].report_power();
 
     // Save the outputs
     npcf[0].save_power(outstr, rmax);
@@ -408,6 +431,8 @@ int main(int argc, char *argv[]) {
         smsave->save(savename);
     }
     IOTime.Stop();
+
+    npcf[0].report_timings();
 
     if (smload!=NULL) delete smload;
     if (smsave!=NULL) delete smsave;

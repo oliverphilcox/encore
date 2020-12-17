@@ -32,7 +32,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 	int thread = 0;
         if (ne==0) printf("# Running single threaded.\n");
 #endif
-    //printf("Computing cell %d of %d on thread %d\n",ne,grid->nf,thread);
+    if(int(ne%1000)==0) printf("Computing cell %d of %d on thread %d\n",ne,grid->nf,thread);
     	// Loop over primary cells.
 	Cell primary = grid->c[n];
 	integer3 prim_id = grid->cell_id_from_1d(n);
@@ -44,7 +44,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 	// Now we need to loop over all primary particles in this cell
 	for (int j = primary.start; j<primary.start+primary.np; j++) {
-	    int mloaded = 0;
+      int mloaded = 0;
 	    if (smload && grid->p[j].w>=0) {
 		// Start the multipoles from the input values
 		// ONLY if the primary particle has weight>0
