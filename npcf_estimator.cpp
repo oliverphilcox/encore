@@ -16,7 +16,7 @@
 #endif
 
 // NBIN is the number of bins we'll sort the radii into.
-#define NBIN 10
+#define NBIN 20
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10.
@@ -405,16 +405,6 @@ int main(int argc, char *argv[]) {
 
     zero_power();
     fflush(NULL);
-
-    printf("Why is this changing??\n");
-    for(int ell=0,n=0;ell<=ORDER;ell++){
-      for(int m=0; m<=ell;m++,n++){
-        printf("%d %d: %.2e\n",ell,m,weight3pcf[n]);
-      }
-    }
-    abort();
-
-
 
     Prologue.Stop();
 

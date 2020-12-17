@@ -51,7 +51,7 @@ class NPCF {
 	for (int i=0, ct=0; i<NBIN; i++) {
 	    bincounts[i] = 0;
 	    binweight[i] = 0.0;
-	    for (int j=i; j<=NBIN; j++, ct++) {
+	    for (int j=i; j<NBIN; j++, ct++) {
     		for (int l_i=0; l_i<=ORDER; l_i++) {
     		    threepcf[l_i*N3PCF+ct] = 0.0;
     		}
