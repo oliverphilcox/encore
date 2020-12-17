@@ -340,8 +340,8 @@ int main(int argc, char *argv[]) {
           if (m==0) weight3pcf[n] /= 2.;
         }
     }
-    #ifdef FOURPCF
 
+#ifdef FOURPCF
 
     // We start by initializing them to zero
     for(int x=0; x<NLM*NLM*(ORDER+1); x++){
@@ -374,9 +374,9 @@ int main(int argc, char *argv[]) {
         }
       }
     }
-    #endif
+#endif
 
-    // Now ready to compute!
+      // Now ready to compute!
     // Sort the particles into the grid.
     Grid grid(orig_p, np, rect_boxsize, cellsize,shift);
     printf("# Done gridding the particles\n");
@@ -405,6 +405,17 @@ int main(int argc, char *argv[]) {
 
     zero_power();
     fflush(NULL);
+
+    printf("Why is this changing??\n");
+    for(int ell=0,n=0;ell<=ORDER;ell++){
+      for(int m=0; m<=ell;m++,n++){
+        printf("%d %d: %.2e\n",ell,m,weight3pcf[n]);
+      }
+    }
+    abort();
+
+
+
     Prologue.Stop();
 
     // Everything above here takes negligible time.  This line is nearly all of the work.

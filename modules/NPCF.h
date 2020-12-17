@@ -51,7 +51,7 @@ class NPCF {
 	for (int i=0, ct=0; i<NBIN; i++) {
 	    bincounts[i] = 0;
 	    binweight[i] = 0.0;
-	    for (int j=0; j<=i; j++, ct++) {
+	    for (int j=i; j<=NBIN; j++, ct++) {
     		for (int l_i=0; l_i<=ORDER; l_i++) {
     		    threepcf[l_i*N3PCF+ct] = 0.0;
     		}
@@ -106,7 +106,7 @@ class NPCF {
       // NB: we print zeta_ij[ell] for all j<=i
       // Old versions printed zeta_ij[ell]/zeta_ij[0] and in a different order
 	for (int i=0, ct=0; i<NBIN; i++) {
-	    for (int j=0; j<=i; j++,ct++) {
+	    for (int j=i; j<NBIN; j++,ct++) {
 		if (j==i) printf("Multipole Power %2d %9lld %9.0f\n",
 				j, bincounts[j], binweight[j]);
 		//if (j==i) {
@@ -155,16 +155,16 @@ class NPCF {
        fprintf(OutFile,"## Column 1 specifies the angular multipole\n");
 
        // First print the indices of the first radial bin
-       fprintf(OutFile,"Bin 1\t");
+       fprintf(OutFile," \t"); // empty l1 specifier
        for(int i=0;i<NBIN;i++){
-         for(int j=0; j<=i; j++) fprintf(OutFile,"%2d\t",i);
+         for(int j=i; j<NBIN; j++) fprintf(OutFile,"%2d\t",i);
        }
-       fprintf(OutFile,"\n");
+       fprintf(OutFile," \n");
 
        // Print the indices of the second radial bin
-       fprintf(OutFile,"Bin 2\t"); // empty ell specifier
+       fprintf(OutFile,"\t"); // empty ell specifier
        for(int i=0;i<NBIN;i++){
-         for(int j=0; j<=i; j++) fprintf(OutFile,"%2d\t",j);
+         for(int j=i; j<NBIN; j++) fprintf(OutFile,"%2d\t",j);
        }
        fprintf(OutFile,"\n");
 
@@ -172,8 +172,8 @@ class NPCF {
        for(int ell=0;ell<=ORDER;ell++){
          fprintf(OutFile,"%d\t",ell);
 
-           for (int i=0, ct=0;i<NBIN;i++){
-             for(int j=0; j<=i; j++,ct++){
+           for (int i=0, ct=0; i<NBIN; i++){
+             for(int j=i; j<NBIN; j++, ct++){
                 fprintf(OutFile,"%le\t",threepcf[ell*N3PCF+ct]);
               }
           }
@@ -204,30 +204,30 @@ class NPCF {
         fprintf(OutFile2,"## Columns 1-3 specify the (l1, l2, l3) multipole triplet\n");
 
         // First print the indices of the radial bins
-        fprintf(OutFile2,"Bin 1\t\t\t"); // empty l1,l2,l3 specifier
+        fprintf(OutFile2,"\t\t\t"); // empty l1,l2,l3 specifier
         for(int i=0;i<NBIN;i++){
-          for(int j=0; j<=i; j++){
-            for(int k=0; k<=j; k++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
               fprintf(OutFile2,"%2d\t",i);
             }
           }
         }
         fprintf(OutFile2,"\n");
 
-        fprintf(OutFile2,"Bin 2\t\t\t");
+        fprintf(OutFile2,"\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=0; j<=i; j++){
-            for(int k=0; k<=j; k++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
               fprintf(OutFile2,"%2d\t",j);
             }
           }
         }
         fprintf(OutFile2,"\n");
 
-        fprintf(OutFile2,"Bin 3\t\t\t");
+        fprintf(OutFile2,"\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=0; j<=i; j++){
-            for(int k=0; k<=j; k++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
               fprintf(OutFile2,"%2d\t",k);
             }
           }
@@ -298,29 +298,30 @@ class NPCF {
 
   BinTimer3.Start();
 
+
 	for (int i=0, ct=0; i<NBIN; i++) {
-	    for (int j=0; j<=i; j++, ct++) {
-		// Fill in a triangle of threepcf radial bins.
-		// We want to compute the sum over m of Ylm[i] Yl(-m)[j] = Ylm[i]Ylm*[j](-1)^m
-		// For m=0, that's just a_l0^2
-		// For others, (a+bi)*(A-Bi) + (a-bi)*(A+Bi) = 2*(a*A+b*B)
-		// Note we use a different normalization convention to that of Slepian/Eisenstein 2015
+	    for (int j=i; j<NBIN; j++, ct++) {
+  		  // Fill in a triangle of threepcf radial bins.
+    		// We want to compute the sum over m of Ylm[i] Yl(-m)[j] = Ylm[i]Ylm*[j](-1)^m
+    		// For m=0, that's just a_l0^2
+    		// For others, (a+bi)*(A-Bi) + (a-bi)*(A+Bi) = 2*(a*A+b*B)
+    		// Note we use a different normalization convention to that of Slepian/Eisenstein 2015
 
-    // Effectively we recast Sum_{m} a_m b_{-m} to Sum_{m>=0} (-1)^m * sym * F[a_m, b_m]
-    // where sym = 1 if m=0 and 2 else, and F[a, b] = Re[a]Re[b]+Im[a]Im[b]
-    // We've put that factor of 2 and the (-1)^m in the weight3pcf[] array.
+        // Effectively we recast Sum_{m} a_m b_{-m} to Sum_{m>=0} (-1)^m * sym * F[a_m, b_m]
+        // where sym = 1 if m=0 and 2 else, and F[a, b] = Re[a]Re[b]+Im[a]Im[b]
+        // We've put that factor of 2 and the (-1)^m in the weight3pcf[] array.
 
-		for (int ell=0, n=0; ell<=ORDER; ell++) {
-		    for (int mm=0; mm<=ell; mm++, n++) {
-			// n counts the (ell,m)
-      // indexing isn't super efficient here, but matches that of 4PCF (where it is more important)
-			// Our definition is that the power is (-1)^ell / Sqrt(2ell+1) * Sum_m a_lm[a] * a_lm[b].conj()
-			threepcf[ell*N3PCF+ct] +=
-			    wp*RealProduct(alm[i][n],alm[j][n])*weight3pcf[n]; //* 4.0 * M_PI / (2*ell+1.0);
-		    }
-		}
-	     }
-	}
+    		for (int ell=0, n=0; ell<=ORDER; ell++) {
+  		    for (int mm=0; mm<=ell; mm++, n++) {
+      			// n counts the (ell,m)
+            // indexing isn't super efficient here, but matches that of 4PCF (where it is more important)
+      			// Our definition is that the power is (-1)^ell / Sqrt(2ell+1) * Sum_m a_lm[a] * a_lm[b].conj()
+      			threepcf[ell*N3PCF+ct] +=
+      			    wp*RealProduct(alm[i][n],alm[j][n])*weight3pcf[n]; //* 4.0 * M_PI / (2*ell+1.0);
+          }
+        }
+      }
+    }
 
   BinTimer3.Stop();
 
@@ -532,17 +533,17 @@ class NPCF {
               // Use first set only
               if((weight1!=0)&&(weight2==0)){
                 // Iterate over first radial bin in lower hypertriangle
-                for(int i=0, bin_index=zeta_index; i<=NBIN; i++){
+                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
 
                   alm1w = alm1wlist[i];
 
                   // Iterate over second bin
-                  for(int j=0; j<=i; j++){
+                  for(int j=i; j<NBIN; j++){
 
                     alm2 = alm2list[j];
 
                     // Iterate over final bin
-                    for(int k=0; k<=j; k++, bin_index++){
+                    for(int k=j; k<NBIN; k++, bin_index++){
 
                       fourpcf[bin_index] += (alm1w*alm2*alm3conjlist1[k]).real();
                     }
@@ -553,17 +554,17 @@ class NPCF {
               // Use second set only
               if((weight1==0)&&(weight2!=0)){
                 // Iterate over first radial bin in lower hypertriangle
-                for(int i=0, bin_index=zeta_index; i<=NBIN; i++){
+                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
 
                   alm1w = alm1wlist[i];
 
                   // Iterate over second bin
-                  for(int j=0; j<=i; j++){
+                  for(int j=i; j<NBIN; j++){
 
                     alm2conj = alm2conjlist[j];
 
                     // Iterate over final bin
-                    for(int k=0; k<=j; k++, bin_index++){
+                    for(int k=j; k<NBIN; k++, bin_index++){
 
                       fourpcf[bin_index] += (alm1w*alm3list2[k]*alm2conj).real();
                     }
@@ -573,18 +574,18 @@ class NPCF {
 
               // Use both sets
               if((weight1!=0)&&(weight2!=0)){
-                for(int i=0, bin_index=zeta_index; i<=NBIN; i++){
+                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
 
                   alm1w = alm1wlist[i];
 
                   // Iterate over second bin
-                  for(int j=0; j<=i; j++){
+                  for(int j=i; j<NBIN; j++){
 
                     alm2 = alm2list[j];
                     alm2conj = alm2conjlist[j];
 
                     // Iterate over final bin
-                    for(int k=0; k<=j; k++, bin_index++){
+                    for(int k=j; k<NBIN; k++, bin_index++){
 
                       // First combination
                       fourpcf[bin_index] += (alm1w*alm2*alm3conjlist1[k]).real() + (alm1w*alm3list2[k]*alm2conj).real();
