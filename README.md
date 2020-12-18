@@ -2,17 +2,17 @@
 
 C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian et al. (in prep.), and uses their conventions. This is a sister code to the [python implementation](https://github.com/oliverphilcox/pynpcf), and currently features support for the 3PCF and 4PCF. For the 4PCF algorithm, the runtime is dominated by sorting the spherical harmonics into bins, which has complexity O(N_galaxy x N_bins^3 x N_ell^5).
 
-Requirements:
+#### Requirements:
 - C++ compiler (tested with g++ 4.8.5)
 - *(Optional)*: AVX compatibility.
 - *(Optional)*: OpenMP for multiprocessing
 
-Authors:
+#### Authors:
 - Oliver Philcox (Princeton / IAS)
 - Zachary Slepian (Florida)
 - Daniel Eisenstein (Harvard)
 
-Usage:
+### Usage
 - To run the code, first compile it using ```make clean; make```. You will need to edit the Makefile depending on your particular configurations. In particular, the Makefile has the options ```-DOPENMP``` to run with OpenMP support for parallization, ```-DFOURPCF``` to enable the 4PCF computation, ```-DPERIODIC``` to assume a periodic box geometry, and ```-DAVX``` to additionally compile the code using AVX instructions.
 - The main code can then be run using ```./npcf_estimator``` or ```./npcf_estimatorAVX```, if your machine has support for AVX instruction sets. We recommend the latter option when running on clusters, as it gives significant speed-boosts for the 3PCF algorithm, for ell-max > 4. The code takes a number of input command-line options, described below.
 - Two key parameters are hard-coded in the ```npcf_estimator.cpp``` file for memory allocation reasons. These are ```ORDER``` (maximum ell used for the spherical harmonics) and ```NBIN``` (total number of linearly-spaced radial bins). There's also ```MAXTHREAD```, but that probably doesn't need to be changed. The code must be recompiled after changing any of these options.
@@ -21,14 +21,14 @@ Usage:
 - Generally, one will run the code on ~ 30 (data-random) files, the corresponding (random-random) files, then combine to obtain the NPCF estimates. For (data-random) inputs, the randoms should have negative weights, such that the total summed weight is zero. The weights can be balanced and inverted using the optional parameters.
 - For advanced usage, there is an option to store the multipoles of positively weighted primary particles. If multiple (D-R) sets are computed in series, this avoids the multipoles of the data being recomputed each time. More information regarding this is found in the comment in the ```modules/StoreMultipoles.h``` script.
 
-Main Options:
+#### Main Options:
 - ```-rmax```: Maximum radius of the largest pairwise separation bin in Mpc/h (default: 200).
 - ```-in```: Filename of the input file. This should be a space or tab-separated CSV file with columns [x,y,z,weight]. Lines starting with # will be skipped. (default: "sample.dat").
 - ```-outstr```: String to prepend to the output files (default: "sample").
 - ```-save```: Filename of the file in which to store the multipoles of positively weighted particles. If none is specified, these will not be stored. Note that this is a large binary file. (default: None).
 - ```-load```: Filename of the file in which to load the multipoles of positively weighted particles from a previous run (default: None).
 
-Other Options:
+#### Other Options:
 - ```-def```: This allows one to accept the default values for each parameter without giving other entries.
 - ```-balance```: If set, rescale the negative weights such that the total weight is zero (useful for D-R pair counts).
 - ```-invert```: If set, multiply all the weights by -1 (useful for R pair counts).
