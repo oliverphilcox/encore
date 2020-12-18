@@ -1,3 +1,0 @@
-CXX = icc -liomp5 -openmp
-CXXFLAGS = -O2 -Wall -DOPENMP 
-

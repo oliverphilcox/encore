@@ -1,6 +1,39 @@
 #ifndef STORE_MULTIPOLES_H
 #define STORE_MULTIPOLES_H
 
+// STORAGE NOTES (D. J. Eisenstein)
+//
+// As an advanced option, we can store and reload the multipoles per
+// particle and the binned pair counts.  The intention is to support
+// use cases in which one has a particle list with data particles
+// (weight >=0) and random particles (weight < 0).  One first runs the
+// code with only the data particles, saving the output.  One then
+// re-runs with a file that has some random particles postpended to
+// the input file.  By loading the stored file, the code will skip the
+// investigation of any pairs of positively weighted particles, thereby
+// re-using all of the DD work (and hence the DDD three-point).
+//
+// The intention is that one might rerun the code many times with
+// different sets of random points.  Doing this will build up statistics
+// on the DR and RR counts.  By having each run use only n_R similar
+// to n_D, we avoid doing far too much work on RR as opposed to DR.
+// The optimum is to use 1.5--2 times more randoms than data in each run.
+//
+// In this mode, only non-negative weighted primary particles have any
+// information stored, although they will search all secondary particles
+// when the stored file is created.  When re-loaded, only pairs of
+// non-negative primaries *and* secondaries are skipped.  So the initial
+// run should only have non-negative particles, or the book-keeping
+// will go askew.
+//
+// The stored files are in a pure binary format; read the source code if you need
+// to parse it.  Note that this file isn't small: NBIN*NMULT*nparticle doubles!
+// For ORDER=4 and NBIN=10, that's 2800 bytes per particle.
+// For ORDER=10 and NBIN=10, 17600 bytes per particle.
+// Hopefully we can read it faster than we can recompute the DD!
+// BOSS-scaled DD appears to be about 5000 primaries/second on a 6-core machine,
+// so we need >1e8 Mbyte/sec to make this worthwhile.
+
 // ========================== Storing Multipoles ==========================
 
 /* We will install the option to store and load the multipoles for positively

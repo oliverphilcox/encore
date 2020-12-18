@@ -212,13 +212,13 @@ void usage() {
 
 int main(int argc, char *argv[]) {
     // Important variables to set!  Here are the defaults:
-    Float boxsize = 1;
+    Float boxsize = 400;
         // The periodicity of the position-space cube. (overwritten if reading from file)
     Float rescale = 0.0;   // If left zero or negative, set rescale=boxsize
     	// The particles will be read from the unit cube, but then scaled by boxsize.
-    Float rmax = 0.05;
+    Float rmax = 200;
     	// The maximum radius of the largest bin.
-    int nside = 20;
+    int nside = 50;
 	// The grid size, which should be tuned to match boxsize and rmax.
         // Don't forget to adjust this if changing boxsize!
     int make_random = 0;
