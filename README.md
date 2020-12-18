@@ -100,5 +100,3 @@ For ORDER=10 and NBIN=10, 17600 bytes per particle.
 Hopefully we can read it faster than we can recompute the DD!
 BOSS-scaled DD appears to be about 5000 primaries/second on a 6-core machine,
 so we need >1e8 Mbyte/sec to make this worthwhile.
-
-*/

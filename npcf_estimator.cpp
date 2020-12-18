@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
     // Output for posterity
     printf("Box Size = {%6.5e,%6.5e,%6.5e}\n", rect_boxsize.x,rect_boxsize.y,rect_boxsize.z);
     printf("Grid = %d\n", nside);
-    printf("Maximum Radius = %6.1g\n", rmax);
+    printf("Maximum Radius = %6.3g\n", rmax);
     Float gridsize = rmax/(box_max/nside);
     printf("Radius in Grid Units = %6.3g\n", gridsize);
     if (gridsize<1) printf("#\n# WARNING: grid appears inefficiently coarse\n#\n");
@@ -352,7 +352,7 @@ int main(int argc, char *argv[]) {
     // Now load 4PCF weight matrices
     for(int l1=0, n=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
       for(int l2=0; l2<=ORDER; l2++){
-        for(int l3=fmax(0,fabs(l1-l2));l3<=fmin(ORDER,l1+l2);l3++){
+        for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++){
           // We need to sum from m1=0 to l1 here. The second matrix is only non-zero for m1, m2 > 0.
           for(int m1=0; m1<=l1; m1++){
             for(int m2=0; m2<=l2; m2++,n++){

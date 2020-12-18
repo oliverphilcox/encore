@@ -16,6 +16,9 @@ void compute_multipoles(Grid *grid, Float rmax) {
     // But some cells have trivial amounts of work, so we will first make a list of the work.
     // Including the empty cells appears to fool the dynamic thread allocation sometimes.
 
+    STimer accmult; // measure the time spent accumulating powers for multipoles
+
+
     // We're going to loop only over the non-empty cells.
 #ifdef OPENMP
 #pragma omp parallel for schedule(dynamic,8) reduction(+:cnt)
@@ -41,6 +44,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 	// continue; // To skip all of the list-building and summations.
 		// Everything else takes negligible time
+
 
 	// Now we need to loop over all primary particles in this cell
 	for (int j = primary.start; j<primary.start+primary.np; j++) {
@@ -104,6 +108,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 		    //continue;   // Skip the multipole creation
 
+        accmult.Start();
 		    // Accumulate the multipoles
 #ifdef AVX 	    // AVX only available for ORDER>=1
 		    if (ORDER) mult[bin].addAVX(dx.x, dx.y, dx.z, grid->p[k].w);
@@ -111,6 +116,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 #else
 		    mult[bin].add(dx.x, dx.y, dx.z, grid->p[k].w);
 #endif
+  accmult.Stop();
 		} // Done with this secondary particle
 	    } // Done with this secondary cell
 	    for (int b=0; b<NBIN; b++) mult[b].finish();   // Finish the multipoles
@@ -128,6 +134,12 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 	} // Done with this primary particle
     } // Done with this primary cell, end of omp pragma
+
+#ifdef AVX
+    printf("\n# Time to compute required powers of x_hat, y_hat, z_hat (with AVX): %.2f\n\n",accmult.Elapsed());
+#else
+  printf("\n# Time to compute required powers of x_hat, y_hat, z_hat (no AVX): %.2f\n\n",accmult.Elapsed());
+#endif
 
     printf("# We counted  %lld pairs within %f.\n", cnt, rmax);
     printf("# Average of %f pairs per primary particle.\n",
