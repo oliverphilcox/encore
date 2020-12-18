@@ -16,11 +16,11 @@
 #endif
 
 // NBIN is the number of bins we'll sort the radii into.
-#define NBIN 20
+#define NBIN 5
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10.
-#define ORDER 10
+#define ORDER 5
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!

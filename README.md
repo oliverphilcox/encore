@@ -1,9 +1,17 @@
 # NPCF-Estimator
 
-C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian++ (2021).
+C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian et al. (in prep.), and uses their conventions. This is a sister code to the [python implementation](https://github.com/oliverphilcox/pynpcf), and currently features support for the 3PCF and 4PCF.
 
-The ./npcf_estimator code runs the analysis. This requires a set of 32 random particle files with 1.5x more randoms than galaxies in each and negative weights. The periodic behavior is restored by the -DPERIODIC compiler option.
+After compiling the code, via ```make clean; make```, the code is run using ```./npcf_estimator``` or ```./npcf_estimatorAVX``` if your machine has support for AVX instruction sets. This is usually run on both sets of (data - randoms) [usually with 1.5x more randoms than galaxies in each and negative weights for the randoms such that the total weight is zero] and the randoms themselves. The periodic behavior is restored by the  ```-DPERIODIC``` compiler option. If ```-DFOURPCF``` when the code is compiled, the 4PCF will be computed alongside the 3PCF.
 
+Requirements:
+- C++ compiler (tested with g++4.8.5)
+- *(Optional)*: AVX compatibility.
+
+Authors:
+- Oliver Philcox (Princeton)
+- Zachary Slepian (Florida)
+- Daniel Eisenstein (Harvard)
 
 ## Taken from the header:
 
