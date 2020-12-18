@@ -12,7 +12,7 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - Zachary Slepian (Florida)
 - Daniel Eisenstein (Harvard)
 
-### Usage
+## Usage
 - To run the code, first compile it using ```make clean; make```. You will need to edit the Makefile depending on your particular configurations. In particular, the Makefile has the options ```-DOPENMP``` to run with OpenMP support for parallization, ```-DFOURPCF``` to enable the 4PCF computation, ```-DPERIODIC``` to assume a periodic box geometry, and ```-DAVX``` to additionally compile the code using AVX instructions.
 - The main code can then be run using ```./npcf_estimator``` or ```./npcf_estimatorAVX```, if your machine has support for AVX instruction sets. We recommend the latter option when running on clusters, as it gives significant speed-boosts for the 3PCF algorithm, for ell-max > 4. The code takes a number of input command-line options, described below.
 - Two key parameters are hard-coded in the ```npcf_estimator.cpp``` file for memory allocation reasons. These are ```ORDER``` (maximum ell used for the spherical harmonics) and ```NBIN``` (total number of linearly-spaced radial bins). There's also ```MAXTHREAD```, but that probably doesn't need to be changed. The code must be recompiled after changing any of these options.
