@@ -16,7 +16,7 @@
 #endif
 
 // NBIN is the number of bins we'll sort the radii into.
-#define NBIN 5
+#define NBIN 10
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10.

@@ -5,7 +5,8 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 #### Requirements:
 - C++ compiler (tested with g++ 4.8.5)
 - *(Optional)*: AVX compatibility.
-- *(Optional)*: OpenMP for multiprocessing
+- *(Optional)*: OpenMP for multiprocessing.
+- *(Optional*): Python (tested with 2.7 & 3.6) with numpy and sympy installed for file summation and edge correction.
 
 #### Authors:
 - Oliver Philcox (Princeton / IAS)
@@ -14,7 +15,8 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 
 ## Usage
 - To run the code, first compile it using ```make clean; make```. You will need to edit the Makefile depending on your particular configurations. In particular, the Makefile has the options ```-DOPENMP``` to run with OpenMP support for parallization, ```-DFOURPCF``` to enable the 4PCF computation, ```-DPERIODIC``` to assume a periodic box geometry, and ```-DAVX``` to additionally compile the code using AVX instructions.
-- The main code can then be run using ```./npcf_estimator``` or ```./npcf_estimatorAVX```, if your machine has support for AVX instruction sets. We recommend the latter option when running on clusters, as it gives significant speed-boosts for the 3PCF algorithm, for ell-max > 4. The code takes a number of input command-line options, described below.
+- The main pair-counting code can then be run using ```./npcf_estimator``` or ```./npcf_estimatorAVX```, if your machine has support for AVX instruction sets. We recommend the latter option when running on clusters, as it gives significant speed-boosts for the 3PCF algorithm, for ell-max > 4. The code takes a number of input command-line options, described below.
+- For power-users, we also provide the ```run_npcf.csh``` script, which automates computation of the full NPCF (including edge-corrections), given data and a set of random catalogs. This can be run either from the terminal or with SLURM, and further documentation is provided at the top of the module.
 - Two key parameters are hard-coded in the ```npcf_estimator.cpp``` file for memory allocation reasons. These are ```ORDER``` (maximum ell used for the spherical harmonics) and ```NBIN``` (total number of linearly-spaced radial bins). There's also ```MAXTHREAD```, but that probably doesn't need to be changed. The code must be recompiled after changing any of these options.
 - The code has support for all ell up to ```MAXORDER=10```.
 - The output products are stored in the ```output/``` directory as ```.txt``` files. The format is described in the individual files: in general, they are arrays with the column and row specifying the radial and angular bin respectively.
@@ -35,4 +37,4 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - ```-nside```: Gridsize used to accelerate the particle search . Overly large grid cells are inefficient at rejecting cells outside ```rmax``` and overly small cells incur more overhead. We recommend having several grid cells per rmax (default: 50).
 - ```-ran```: Integer: if specified, ignore any input file and throw this many points in a cube at random.
 - ```-box```: If drawing particles at random, this sets the periodic size of the computational domain (default: 400).
-- ```-scale```: Dilate the input positions by this factor (default: 0).
+- ```-scale```: Dilate the input positions by this factor (default: 1).

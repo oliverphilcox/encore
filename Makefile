@@ -4,8 +4,7 @@
 
 # If you want to run with multi-threading, uncomment the following two lines
 CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
-CXXFLAGS = -O3 -DFOURPCF -DOPENMP
-#-DFOURPCF
+CXXFLAGS = -O3 -DOPENMP -DFOURPCF
 #-DPERIODIC
 # Use the -DPERIODIC flag to run with periodic boundary conditions
 # Use the -DFOURPCF flag to include the four-point correlator
