@@ -2,13 +2,12 @@
 #CXXFLAGS = -O2 -Wall
 #CXXFLAGS = -g -Wall
 
-# If you want to run with multi-threading, uncomment the following two lines
 CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
-CXXFLAGS = -O3 -DOPENMP -DFOURPCF
-#-DPERIODIC
-# Use the -DPERIODIC flag to run with periodic boundary conditions
-# Use the -DFOURPCF flag to include the four-point correlator
-# Use the -DOPENMP flag to compile with OpenMP for multithreading on linux
+CXXFLAGS = -O3 -DFOURPCF -DFIVEPCF -DOPENMP
+# Add the -DPERIODIC flag to run with periodic boundary conditions
+# Add the -DFOURPCF flag to include the four-point correlator
+# Add the -DFIVEPCF flag to include the five-point correlator
+# Add the -DOPENMP flag to compile with OpenMP for multithreading on linux
 
 # Or if you want multi-threading with icc, the following would work:
 #CXX = icc -liomp5 -openmp

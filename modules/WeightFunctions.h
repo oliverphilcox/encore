@@ -1,7 +1,11 @@
 #ifndef WEIGHT_FUNCTIONS_H
 #define WEIGHT_FUNCTIONS_H
 
+// maximum order for 3PCF/4PCF
 #define MAXORDER 10
+// maximum order for 5PCF
+#define MAXORDER5 4
+
 #define NLM_MAX ((MAXORDER+1)*(MAXORDER+2)/2)
 #define NLM ((ORDER+1)*(ORDER+2)/2)
 
@@ -116,5 +120,23 @@ Float weight4pcf2[NLM*NLM*(ORDER+1)];
 // This should be read-in and converted to whatever length is necessary as a 1D array
 #include "coupling4PCF.h"
 #endif
+
+#ifdef FIVEPCF
+// Create array for 5PCF weights (to be filled at runtime from almnorm and the coupling matrices)
+// These are of slightly different format to the 4PCF matrices, using just a single array (to cut down on memory usage)
+// Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
+// Notably they need both odd and even m_1, m_2, m_3 to be stored.
+
+Float weight5pcf[int(pow(ORDER+1,8))];
+
+// Full 5PCF weighting matrix
+// This contains (-1)^{l1+l2+l3+l4} Sum_{m12} (-1)^{l12-m12} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l4, m4)]
+// Data-type is a 5D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l4} with the (l1,m1), (l2,m2) and (l3,m3) flattened.
+// This should be read-in and converted to whatever length is necessary as a 1D array
+
+#include "coupling5PCF.h"
+
+#endif
+
 
 #endif
