@@ -38,7 +38,7 @@ set ngrid = 50 # grid-size for accelerating pair count
 set root = boss_cmass # root for data filenames
 set ranroot = boss_cmass # root for random filenames
 set in = /projects/QUIJOTE/Oliver/npcf/data # input directory (see above for required contents)
-set out = /projects/QUIJOTE/Oliver/npcf/output # output file directory
+set out = /projects/QUIJOTE/Oliver/npcf/output_5pcf # output file directory
 set tmp = /scratch/gpfs/ophilcox/npcf_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
 
 # Load some python environment with numpy and sympy installed
