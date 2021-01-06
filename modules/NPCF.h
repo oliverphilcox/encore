@@ -32,6 +32,18 @@ class NPCF {
 #endif
 
 
+#ifdef FIVEPCF
+    STimer BinTimer5;
+
+// Sizes of 5pcf array
+#define N5PCF (NBIN*(1+NBIN)*(2+NBIN)*(3+NBIN))/24
+
+    // Array to hold the 5PCF (some bins will violate triangle condition / parity and be empty
+    Float *fivepcf;
+    // length of angular part of 5PCF
+    int nell5;
+#endif
+
     void make_map() {
 	// Construct the index number in our multipoles for x^a y^b z^c
         for(int i=0;i<=MAXORDER;i++)
@@ -48,6 +60,7 @@ class NPCF {
 
     void reset() {
 	// Zero out the array on construction.
+
 	for (int i=0, ct=0; i<NBIN; i++) {
 	    bincounts[i] = 0;
 	    binweight[i] = 0.0;
@@ -57,7 +70,7 @@ class NPCF {
     		}
       }
     }
-  #ifdef FOURPCF
+#ifdef FOURPCF
 
     // First work out how long the 4PCF array should be
     nell4=0;
@@ -71,7 +84,27 @@ class NPCF {
 
     // Initialize array to zero
     for(int x=0;x<nell4*N4PCF;x++) fourpcf[x] = 0.0;
-  #endif
+#endif
+
+#ifdef FIVEPCF
+
+    // First work out how long the 5PCF array should be, taking into account triangle conditions
+    nell5=0;
+    for(int l1=0;l1<=ORDER;l1++){
+      for(int l2=0;l2<=ORDER;l2++){
+        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+          for(int l3=0;l3<=ORDER;l3++){
+            for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) nell5++;
+          }
+        }
+      }
+    }
+    // Now allocate memory
+    fivepcf = (Float *)malloc(sizeof(Float)*nell5*N5PCF);
+
+    // Initialize array to zero
+    for(int x=0;x<nell5*N5PCF;x++) fivepcf[x] = 0.0;
+#endif
 	    return;
     }
 
@@ -96,10 +129,14 @@ class NPCF {
   #ifdef FOURPCF
   for(int x=0;x<N4PCF*nell4;x++) fourpcf[x] += c->fourpcf[x];
   #endif
+
+  #ifdef FIVEPCF
+  for(int x=0;x<N5PCF*nell5;x++) fivepcf[x] += c->fivepcf[x];
+  #endif
     }
 
     void report_power() {
-      /// Report the NPCF measurements.
+      /// Report the 3PCF measurements. Depracated, and only includes 3PCF here.
 
       // NB: we print zeta_ij[ell] for all j<=i
       // Old versions printed zeta_ij[ell]/zeta_ij[0] and in a different order
@@ -118,9 +155,6 @@ class NPCF {
 	    printf("\n");
 	    }
 	}
-  #ifdef FOURPCF
-  printf("##TODO: Add 4PCF Here\n");
-  #endif
     }
 
     void report_timings() {
@@ -129,9 +163,12 @@ class NPCF {
       printf("\n# Single CPU Timings");
       printf("\nSpherical harmonics: %.3f s",MultTimer.Elapsed());
       printf("\n3PCF binning: %.3f s",BinTimer3.Elapsed());
-      #ifdef FOURPCF
+#ifdef FOURPCF
         printf("\n4PCF binning: %.3f s",BinTimer4.Elapsed());
-      #endif
+#endif
+#ifdef FIVEPCF
+        printf("\n5PCF binning: %.3f s",BinTimer5.Elapsed());
+#endif
       printf("\n");
     }
 
@@ -253,6 +290,95 @@ class NPCF {
 
        #endif
 
+       #ifdef FIVEPCF
+
+       // SAVE 5PCF
+
+       // First create output files
+       char out_name3[1000];
+       snprintf(out_name3, sizeof out_name3, "output/%s_5pcf.txt", out_string);
+       FILE * OutFile3 = fopen(out_name3,"w");
+
+        // Print some useful information
+        fprintf(OutFile3,"## Order: %d\n",ORDER);
+        fprintf(OutFile3,"## Bins: %d\n",NBIN);
+        fprintf(OutFile3,"## Maximum Radius = %.2e\n", rmax);
+        fprintf(OutFile3,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Rows 5+ = zeta_l1l2(l12)l3l4^abcd\n");
+        fprintf(OutFile3,"## Columns 1-5 specify the (l1, l2, (l12), l3, l4) multipole quintuplet\n");
+
+        // First print the indices of the radial bins
+        fprintf(OutFile3,"\t\t\t\t"); // empty l1,l2,l12,l3,l4 specifier
+        for(int i=0;i<NBIN;i++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
+              for(int l=k; l<NBIN; l++){
+                fprintf(OutFile3,"%2d\t",i);
+              }
+            }
+          }
+        }
+        fprintf(OutFile3,"\n");
+
+        fprintf(OutFile3,"\t\t\t\t");
+        for(int i=0;i<NBIN;i++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
+              for(int l=k; l<NBIN; l++){
+                fprintf(OutFile3,"%2d\t",j);
+              }
+            }
+          }
+        }
+        fprintf(OutFile3,"\n");
+
+        fprintf(OutFile3,"\t\t\t\t");
+        for(int i=0;i<NBIN;i++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
+              for(int l=k; l<NBIN; l++){
+                fprintf(OutFile3,"%2d\t",k);
+              }
+            }
+          }
+        }
+        fprintf(OutFile3,"\n");
+
+        fprintf(OutFile3,"\t\t\t\t");
+        for(int i=0;i<NBIN;i++){
+          for(int j=i; j<NBIN; j++){
+            for(int k=j; k<NBIN; k++){
+              for(int l=k; l<NBIN; l++){
+                fprintf(OutFile3,"%2d\t",l);
+              }
+            }
+          }
+        }
+        fprintf(OutFile3,"\n");
+
+        // Now print the 5PCF, ell-by-ell.
+        for(int l1=0,l_index=0;l1<=ORDER;l1++){
+          for(int l2=0;l2<=ORDER;l2++){
+            for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+              for(int l3=0;l3<=ORDER;l3++){
+                for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++,l_index++){
+                  if(pow(-1.,l1+l2+l3+l4)==-1) continue; // skip odd parity and triangle violating bins
+                  fprintf(OutFile3,"%d\t%d\t%d\t%d\t%d\t",l1,l2,l12,l3,l4);
+                  for (int i=0;i<N5PCF;i++) fprintf(OutFile3,"%le\t",fivepcf[N5PCF*l_index+i]);
+                  fprintf(OutFile3,"\n");
+                }
+              }
+            }
+          }
+        }
+        fflush(NULL);
+
+        // Close open files
+        fclose(OutFile3);
+
+        printf("\n5PCF Output saved to %s\n",out_name3);
+
+       #endif
+
      }
 
 
@@ -324,6 +450,7 @@ class NPCF {
   BinTimer3.Stop();
 
 #ifdef FOURPCF
+  {
   // COMPUTE 4PCF CONTRIBUTIONS
 
   BinTimer4.Start();
@@ -344,7 +471,7 @@ class NPCF {
 
   // Now iterate over (l1, l2, l3) triplet.
   // NB: n indexes position in the 4PCF weight array
-  // We only compute terms with even parity i.e. l1+l2+l3. These are all real.
+  // We only compute terms with even parity i.e. even l1+l2+l3. These are all real.
   // The odd parity terms could be included if necessary and are purely imaginary
 
   // Iterate over first multipole
@@ -472,6 +599,131 @@ class NPCF {
     }
 
   BinTimer4.Stop();
+}
+#endif
+
+
+#ifdef FIVEPCF
+  {
+  // COMPUTE 5PCF CONTRIBUTIONS
+
+  BinTimer5.Start();
+
+  int n; // indexes weight array
+  int tmp_lm1, tmp_lm2, tmp_lm3, tmp_lm4, m4; // useful indices
+  Float weight; // coupling weights
+  Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN], alm4list[NBIN]; // arrays to hold intermediate a_lm lists
+  Complex alm1w, alm2, alm3; // intermediate a_lm values
+
+  // Precompute complex conjugates of all alm (for m>=0)
+  Complex almconj[NBIN][NLM];
+  for(int x=0;x<NBIN;x++){
+    for(int l=0, y=0;l<=ORDER;l++){
+      for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+    }
+  }
+
+  // Iterate over (l1, l2, (l12), l3, l4) quintuplet
+  // NB: n indexes position in the 5PCF weight array, and must be carefully set
+  // We only compute terms with even parity i.e. even l1+l2+l3+l4. These are all real.
+  // The odd parity terms could be included if necessary and are purely imaginary
+
+  // Iterate over first multipole
+  n=-1;
+  for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+
+     // Iterate over second multipole
+     for(int l2=0; l2<=ORDER; l2++){
+
+       // Iterate over internal multipole, avoiding bins violating triangle condition
+       for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2); l12++){
+
+         // Iterate over third multipole
+         for(int l3=0; l3<=ORDER; l3++){
+
+           // Iterate over fourth multipole, avoiding bins violating triangle condition
+           for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
+
+           // Skip any odd multipoles with odd parity
+           if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+
+             // Iterate over all m1 (including negative)
+             for(int m1=-l1; m1<=l1; m1++){
+
+               tmp_lm1 = l1*(l1+1)/2+fabs(m1);
+
+               // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+               if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_lm1];
+               else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
+
+               // Iterate over all m2 (including negative)
+               for(int m2=-l2; m2<=l2; m2++){
+
+                 tmp_lm2 = l2*(l2+1)/2+fabs(m2);
+
+                 // Create temporary copy of a_l2m2, taking conjugate if necessary
+                 if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_lm2];
+                 else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_lm2];
+
+                 // Iterate over m3 (including negative)
+                for(int m3=-l3; m3<=l3; m3++){
+
+                  m4 = -m1-m2-m3;
+                  if (m4<0) continue; // only need to use m4>=0
+                  if (m4>l4) continue; // this violates triangle conditions
+                  n++; // nb: we start from -1 here, so okay to advance this now
+
+                  // Look up the relevant weight
+                  weight = weight5pcf[n];
+                  if (weight==0) continue;
+
+                  tmp_lm3 = l3*(l3+1)/2+fabs(m3);
+                  tmp_lm4 = l4*(l4+1)/2;
+
+                  // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+                  // No conjugates needed for a_l4m4 since we fixed m4>=0!
+                  // Note we add the coupling weight factor to a_l4m4
+                  if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_lm3];
+                  else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_lm3];
+                  for(int x=0; x<NBIN; x++) alm4list[x] = alm[x][tmp_lm4]*weight;
+
+                  // Now fill up the 5PCF. We have two sets of (l1,l2,l3,m1,m2,m3) to do. The second will only appear if m1>0 and m2>0 (else the weight is set to zero)
+
+                  // Iterate over first radial bin in lower hypertriangle
+                  for(int i=0, bin_index=zeta_index; i<NBIN; i++){
+
+                    alm1w = alm1wlist[i];
+
+                    // Iterate over second bin
+                    for(int j=i; j<NBIN; j++){
+
+                      alm2 = alm2list[j]*alm1w;
+
+                      // Iterate over third bin
+                      for(int k=j; k<NBIN; k++){
+
+                        alm3 = alm3list[k]*alm2;
+
+                        // Iterate over final bin and advance the 5PCF array counter
+                        for(int l=k; l<NBIN; l++, bin_index++){
+                            // Add contribution to 5PCF array
+                            fivepcf[bin_index] += (alm3*alm4list[l]).real();
+
+                            }
+                          }
+                        }
+                      }
+                  //End of radial binning loops
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  BinTimer5.Stop();
+}
 
 #endif
 

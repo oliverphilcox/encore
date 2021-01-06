@@ -16,11 +16,11 @@
 #endif
 
 // NBIN is the number of bins we'll sort the radii into.
-#define NBIN 10
+#define NBIN 2
 
 // ORDER is the order of the Ylm we'll compute.
-// This must be <=MAXORDER, currently hard coded to 10.
-#define ORDER 5
+// This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.
+#define ORDER 2
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!
@@ -182,16 +182,17 @@ void sum_power() {
 
 void usage() {
     fprintf(stderr, "\nUsage for grid_multipoles/grid_multipolesAVX:\n");
-    fprintf(stderr, "   -box <boxsize> : The periodic size of the computational domain.  Default 400.\n");
-    fprintf(stderr, "   -scale <rescale>: How much to dilate the input positions by.  Default 0.\n");
-    fprintf(stderr, "             Zero or negative value causes =boxsize, rescaling unit cube to full periodicity\n");
-    fprintf(stderr, "   -rmax <rmax>: The maximum radius of the largest pair bin.  Default 200.\n");
-    fprintf(stderr, "   -nside <nside>: The grid size for accelerating the pair count.  Default 8.\n");
-    fprintf(stderr, "             Recommend having several grid cells per rmax.\n");
     fprintf(stderr, "   -in <file>: The input file (space-separated x,y,z,w).  Default sample.dat.\n");
     fprintf(stderr, "   -outstr <outstring>: String to prepend to the output file.  Default sample.\n");
-    fprintf(stderr, "   -ran <np>: Ignore any file and use np random perioidic points instead.\n");
     fprintf(stderr, "   -def: This allows one to accept the defaults without giving other entries.\n");
+    fprintf(stderr, "   -rmax <rmax>: The maximum radius of the largest pair bin.  Default 200.\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "   -ran <np>: Ignore any file and use np random perioidic points instead.\n");
+    fprintf(stderr, "   -box <boxsize> : The periodic size of the computational domain, if particles are thrown randomly.  Default 400.\n");
+    fprintf(stderr, "   -scale <rescale>: How much to dilate the input positions by.  Default 1.\n");
+    fprintf(stderr, "             Negative values causes =boxsize, rescaling unit cube to full periodicity\n");
+    fprintf(stderr, "   -nside <nside>: The grid size for accelerating the pair count.  Default 8.\n");
+    fprintf(stderr, "             Recommend having several grid cells per rmax.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Two other important parameters can only be set during compilations:\n");
     fprintf(stderr, "   ORDER: The multipole order being computed.\n");
@@ -214,7 +215,7 @@ int main(int argc, char *argv[]) {
     // Important variables to set!  Here are the defaults:
     Float boxsize = 400;
         // The periodicity of the position-space cube. (overwritten if reading from file)
-    Float rescale = 0.0;   // If left zero or negative, set rescale=boxsize
+    Float rescale = 1.0;   // If left zero or negative, set rescale=boxsize
     	// The particles will be read from the unit cube, but then scaled by boxsize.
     Float rmax = 200;
     	// The maximum radius of the largest bin.
@@ -285,12 +286,13 @@ int main(int argc, char *argv[]) {
     assert(rmax>0.0);
     assert(nside>0);
     assert(nside<300);   // Legal, but rather unlikely that we should use something this big!
-    if (rescale<=0.0) rescale = box_max;   // This would allow a unit cube to fill the periodic volume
+    if (rescale<0.0) rescale = box_max;   // This would allow a unit cube to fill the periodic volume
+    if (rescale==0.0) rescale = 1; // no rescaling
     if (fname==NULL) fname = (char *) default_fname;   // No name was given
     if (outstr==NULL) outstr = (char *) default_outstr;   // No outstring was given
 
     // Output for posterity
-    printf("Box Size = {%6.5e,%6.5e,%6.5e}\n", rect_boxsize.x,rect_boxsize.y,rect_boxsize.z);
+    printf("\nBox Size = {%6.5e,%6.5e,%6.5e}\n", rect_boxsize.x,rect_boxsize.y,rect_boxsize.z);
     printf("Grid = %d\n", nside);
     printf("Maximum Radius = %6.3g\n", rmax);
     Float gridsize = rmax/(box_max/nside);
@@ -303,6 +305,12 @@ int main(int argc, char *argv[]) {
     printf("4PCF: Yes\n");
   #else
     printf("4PCF: No\n");
+  #endif
+  #ifdef FIVEPCF
+    assert(ORDER<=MAXORDER5);
+    printf("5PCF: Yes\n");
+  #else
+    printf("5PCF: No\n");
   #endif
     printf("\n");
 
@@ -357,7 +365,7 @@ int main(int argc, char *argv[]) {
           for(int m1=0; m1<=l1; m1++){
             for(int m2=0; m2<=l2; m2++,n++){
 
-              // First set of weights: 2 * coupling[l1,l2,l3,m1,m2,-m1-m2] * (-1)^{m1+m2} * sym(m1, m2), with sym(a,b) = 1/2 if a=b and zero else (see LaTeX for this).
+              // First set of weights: 2 * coupling[l1,l2,l3,m1,m2,-m1-m2] * (-1)^{m1+m2} * sym(m1, m2), with sym(a,b) = 1/2 if a=b and unity else (see LaTeX for this).
               // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
               weight4pcf1[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m1+m2])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
               if((m1==0)&&(m2==0)) weight4pcf1[n]/=2.;
@@ -367,13 +375,55 @@ int main(int argc, char *argv[]) {
               // Note this is zero for m1=0 and/or m2=0
               if((m1>0)&&(m2>0)){
                 weight4pcf2[n] = 2.*pow(-1.,m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+int(fabs(m2-m1))])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2-m2][l3];
-                if(m2<m1) weight4pcf2[n] *= pow(-1.,m1-m2); // absorbing later factor for efficiency
+                if(m2<m1) weight4pcf2[n] *= pow(-1.,m1-m2); // absorbing later factor from complex conjugation for efficiency
               }
             }
           }
         }
       }
     }
+#endif
+
+#ifdef FIVEPCF
+
+    // We start by initializing them to zero
+    for(int x=0; x<int(pow(ORDER+1,8)); x++){
+      weight5pcf[x] = 0.0;
+    }
+
+    int m4, n=0;
+    // Now load 5PCF weight matrices, only filling values that don't violate triangle conditions
+    for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l12,l3,l4,m1,m2,m3) octuplet (m4 is specified by triangle conditions)
+      for(int l2=0; l2<=ORDER; l2++){
+        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+          for(int l3=0; l3<=ORDER; l3++){
+            for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++){
+              if(pow(-1,l1+l2+l3+l4)==-1) continue; // skip odd parity combinationss
+              // NB: we sum m_i from -li to li here. m4>=0 however.
+              for(int m1=-l1; m1<=l1; m1++){
+                for(int m2=-l2; m2<=l2; m2++){
+                  for(int m3=-l3; m3<=l3; m3++){
+                    m4 = -m1-m2-m3;
+                    if (m4<0) continue; // only need to use m4>=0
+                    if (m4>l4) continue; // this violates triangle conditions
+                    // Now add in the weights. This is 2 * coupling[l1, l2, l12, l3, m1, m2, m3, -m1-m2-m3] * (-1)^{m1+m2+m3} * S(m1+m2+m3) with S(M) = 1/2 if M=0 and unity else.
+                    // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3+m4} (which is trivial)
+                    weight5pcf[n] = 2.*pow(-1.,m1+m2+m3)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+m4]);
+                    weight5pcf[n] *= fivepcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l4];
+                    if(m4==0) weight5pcf[n] /= 2;
+                    // also add in factors from complex conjugations of m1->m3
+                    if(m1<0) weight5pcf[n] *= pow(-1.,m1);
+                    if(m2<0) weight5pcf[n] *= pow(-1.,m2);
+                    if(m3<0) weight5pcf[n] *= pow(-1.,m3);
+                    n++;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
 #endif
 
       // Now ready to compute!
@@ -420,6 +470,7 @@ int main(int argc, char *argv[]) {
     printf("\n# Binned weighted pair counts, monopole and quadrupole\n");
     pairs[0].report_pairs();
 
+    // old routine for printing power to terminal
     //printf("\n# Multipole power\n");
     //npcf[0].report_power();
 

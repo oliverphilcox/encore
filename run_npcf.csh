@@ -1,10 +1,10 @@
 #!/bin/csh
 
 ##################### DOCUMENTATION #####################
-### Shell script for running the NPCF-Estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2020).
+### Shell script for running the NPCF-Estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
 #
 # This can be run either from the terminal or as a SLURM script (using the below parameters).
-# The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 3PCF/4PCF) before this script is run.
+# The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 3PCF/4PCF/5PCF) before this script is run.
 # The script should be run from the code directory
 # This is adapted from a similar script by Daniel Eisenstein.
 # In the input directory, we expect compressed .gz files labelled {root}.data.gz, {root}.ran.{IJ}.gz
@@ -38,7 +38,7 @@ set ngrid = 50 # grid-size for accelerating pair count
 set root = boss_cmass # root for data filenames
 set ranroot = boss_cmass # root for random filenames
 set in = /projects/QUIJOTE/Oliver/npcf/data # input directory (see above for required contents)
-set out = /projects/QUIJOTE/Oliver/npcf/output # output file directory
+set out = /projects/QUIJOTE/Oliver/npcf/output_5pcf # output file directory
 set tmp = /scratch/gpfs/ophilcox/npcf_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
 
 # Load some python environment with numpy and sympy installed

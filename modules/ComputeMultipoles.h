@@ -137,7 +137,6 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 	    // Now add these multipoles into the cross-powers
 	    // This step takes very little time for the 3PCF, but is time-limiting for higher-point functions.
-	    // continue;     // Skip the power summation
 	    npcf[thread].add_to_power(mult, primary_w);
 
 	} // Done with this primary particle
