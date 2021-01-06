@@ -1,6 +1,6 @@
 # NPCF-Estimator
 
-C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian et al. (in prep.), and uses their conventions. This is a sister code to the [python implementation](https://github.com/oliverphilcox/pynpcf), and currently features support for the 3PCF, 4PCF and 5PCF. For the 4PCF and 5PCF algorithms, the runtime is dominated by sorting the spherical harmonics into bins, which has complexity O(N_galaxy x N_bins^3 x N_ell^5) [4PCF] or O(N_galaxy x N_bins^4 x N_ell^8) [5PCF].
+C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian et al. (in prep.), and uses their conventions. This currently features support for the 3PCF, 4PCF and 5PCF, and is a sister code to the [python implementation](https://github.com/oliverphilcox/pynpcf), which contains only 3PCF and 4PCF algorithms. For the 4PCF and 5PCF algorithms, the runtime is dominated by sorting the spherical harmonics into bins, which has complexity O(N_galaxy x N_bins^3 x N_ell^5) [4PCF] or O(N_galaxy x N_bins^4 x N_ell^8) [5PCF].
 
 #### Requirements:
 - C++ compiler (tested with g++ 4.8.5)
