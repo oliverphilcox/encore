@@ -4,7 +4,9 @@
 // maximum order for 3PCF/4PCF
 #define MAXORDER 10
 // maximum order for 5PCF
-#define MAXORDER5 4
+#define MAXORDER5 5
+// maximum order for 6PCF
+#define MAXORDER6 3
 
 #define NLM_MAX ((MAXORDER+1)*(MAXORDER+2)/2)
 #define NLM ((ORDER+1)*(ORDER+2)/2)
@@ -97,14 +99,54 @@ static Float almnorm[NLM_MAX] = {
     YNORM(1/1024, 969969)
 };
 
-// Create array for 3PCF weights (to be filled at runtime from almnorm)
+// Create array for 3PCF weights (to be filled at runtime from almnorm and the coupling matrices)
 Float weight3pcf[NLM];
+Float threepcf_coupling[NLM_MAX];
 
-// Include the full coupling matrix up to ell = MAXORDER
-// This is defined as C_l^m = (-1)^(l-m)/Sqrt[2l+1]
-// Format is an array of dimension NLM_MAX
-#include "coupling3PCF.h"
+void load_3pcf_coupling(){
+  // Load the full coupling matrix up to ell = MAXORDER from file
+  // This is defined as C_l^m = (-1)^(l-m)/Sqrt[2l+1]
+  // Format is an array of dimension NLM_MAX
 
+  char line[100000];
+  FILE *fp;
+  char filename [100];
+  snprintf(filename,sizeof(filename), "coupling_matrices/weights_3pcf_LMAX%d.txt",MAXORDER);
+
+  fp = fopen(filename,"r");
+  if (fp==NULL){
+     fprintf(stderr,"Coupling matrix file %s not found - this should be recomputed!\n",filename);
+     abort();
+  }
+
+  int line_count=0; // line counter
+
+  // Read in values to file (straightforward as file has no comment strings and one value per line)
+  while (fgets(line,1000000,fp)!=NULL) {
+   threepcf_coupling[line_count]=atof(line);
+   line_count++;
+  }
+  assert(line_count==NLM_MAX);
+};
+
+void generate_3pcf_weights(){
+  // Generate the 3PCF weight array for the specific LMAX used here.
+  // This includes the additional normalization factors
+  // We fill up the one-dimensional weight3pcf array
+
+  // First initialize this to zero for safety
+  for(int x=0; x<NLM; x++) weight3pcf[x] = 0.;
+
+  for(int ell=0, n=0; ell<=ORDER; ell++){
+    for(int m=0; m<=ell; m++, n++){
+        // Add coupling weight, alm normalizations and symmetry factor of 2 unless m1=m2=0
+        // The (-1)^m factor comes from replacing a_{l-m} with its conjugate a_{lm}* later.
+        // This cancels with another (-1)^m factor in the coupling
+        weight3pcf[n] = 2.*almnorm[n]*threepcf_coupling[n]*pow(-1.,m);
+        if (m==0) weight3pcf[n] /= 2.;
+      }
+  }
+}
 
 #ifdef FOURPCF
 // Create array for 4PCF weights (to be filled at runtime from almnorm and the coupling matrices)
@@ -114,11 +156,89 @@ Float weight3pcf[NLM];
 Float weight4pcf1[NLM*NLM*(ORDER+1)];
 Float weight4pcf2[NLM*NLM*(ORDER+1)];
 
-// Full 4PCF weighting matrix
-// This contains (-1)^{l1+l2+l3} ThreeJ[(l1, m1) (l2, m2) (l3, m3)]
-// Data-type is a 3D array indexing {(l1,m1), (l2,m2), (l3)} with the (l1,m1) and (l2,m2) flattened.
-// This should be read-in and converted to whatever length is necessary as a 1D array
-#include "coupling4PCF.h"
+// array for all possible weights up to MAX_ORDER
+Float fourpcf_coupling[(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)];
+
+void load_4pcf_coupling(){
+  // Load the full coupling matrix up to ell = MAXORDER from file
+  // This is defined as C_m^Lambda = (-1)^{l1+l2+l3} ThreeJ[(l1, m1) (l2, m2) (l3, m3)]
+  // Data-type is a 3D array indexing {(l1,m1), (l2,m2), (l3)} with the (l1,m1) and (l2,m2) flattened.
+  // It will be trimmed to the relevant l_max at runtime.
+
+  char line[100000];
+  FILE *fp;
+  char filename [100];
+  snprintf(filename,sizeof(filename), "coupling_matrices/weights_4pcf_LMAX%d.txt",MAXORDER);
+
+  fp = fopen(filename,"r");
+  if (fp==NULL){
+     fprintf(stderr,"Coupling matrix file %s not found - this should be recomputed!\n",filename);
+     abort();
+  }
+
+  int line_count=0; // line counter
+  Float tmp_arr[int(pow(MAXORDER+1,5))]; // array to hold flattened array (size is an overestimate)
+
+  // Read in values to file (straightforward as file has no comment strings and one value per line)
+  while (fgets(line,1000000,fp)!=NULL) {
+   tmp_arr[line_count]=atof(line);
+   line_count++;
+  }
+
+  // Now reconstruct array using the triangle conditions to pick out the relevant elements
+  // note that we don't need to initialize the other elements as they're never used
+  for(int l1=0,n=0;l1<=MAXORDER;l1++){
+    for(int l2=0;l2<=MAXORDER;l2++){
+      for(int l3=abs(l1-l2);l3<=fmin(MAXORDER,l1+l2);l3++){
+        for(int m1=-l1;m1<=l1;m1++){
+          for(int m2=-l2; m2<=l2; m2++){
+            if(abs(m1+m2)>l3) continue;
+            fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3] = tmp_arr[n++];
+          }
+        }
+      }
+    }
+  }
+};
+
+void generate_4pcf_weights(){
+    // Generate the 4PCF weight array for the specific LMAX used here.
+    // This includes the additional normalization factors
+    // We fill up the one-dimensional weight4pcf1 and weight4pcf2 arrays
+
+    // We start by initializing them to zero
+    for(int x=0; x<NLM*NLM*(ORDER+1); x++){
+      weight4pcf1[x] = 0.0;
+      weight4pcf2[x] = 0.0;
+    }
+
+    // Now load 4PCF weight matrices
+    for(int l1=0, n=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
+      for(int l2=0; l2<=ORDER; l2++){
+        for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++){
+          // We need to sum from m1=0 to l1 here. The second matrix is only non-zero for m1, m2 > 0.
+          for(int m1=0; m1<=l1; m1++){
+            for(int m2=0; m2<=l2; m2++,n++){
+
+              // First set of weights: 2 * coupling[l1,l2,l3,m1,m2,-m1-m2] * (-1)^{m1+m2} * sym(m1, m2), with sym(a,b) = 1/2 if a=b and unity else (see LaTeX for this).
+              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
+              weight4pcf1[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m1+m2])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
+              if((m1==0)&&(m2==0)) weight4pcf1[n]/=2.;
+
+              // Second set of weights: 2 * coupling[l1,l2,l3,m1,-m2,m2-m1] * (-1)^{m2} (see LaTeX for this).
+              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
+              // Note this is zero for m1=0 and/or m2=0
+              if((m1>0)&&(m2>0)){
+                weight4pcf2[n] = 2.*pow(-1.,m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+int(fabs(m2-m1))])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2-m2][l3];
+                if(m2<m1) weight4pcf2[n] *= pow(-1.,m1-m2); // absorbing later factor from complex conjugation for efficiency
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
 #endif
 
 #ifdef FIVEPCF
@@ -129,13 +249,219 @@ Float weight4pcf2[NLM*NLM*(ORDER+1)];
 
 Float weight5pcf[int(pow(ORDER+1,8))];
 
-// Full 5PCF weighting matrix
-// This contains (-1)^{l1+l2+l3+l4} Sum_{m12} (-1)^{l12-m12} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l4, m4)]
-// Data-type is a 5D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l4} with the (l1,m1), (l2,m2) and (l3,m3) flattened.
-// This should be read-in and converted to whatever length is necessary as a 1D array
+// array for all possible weights up to MAX_ORDER
+Float fivepcf_coupling[(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)];
 
-#include "coupling5PCF.h"
+void load_5pcf_coupling(){
+  // Load the full coupling matrix up to ell = MAXORDER5 from file
+  // This is defined as C_m^Lambda = (-1)^{l1+l2+l3+l4} Sum_{m12} (-1)^{l12-m12} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l4, m4)]
+  // Data-type is a 3D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l4} with the (l1,m1), (l2,m2) and (l3,m3) flattened.
+  // It will be trimmed to the relevant l_max at runtime.
 
+  char line[100000];
+  FILE *fp;
+  char filename [100];
+  snprintf(filename,sizeof(filename), "coupling_matrices/weights_5pcf_LMAX%d.txt",MAXORDER5);
+
+  fp = fopen(filename,"r");
+  if (fp==NULL){
+     fprintf(stderr,"Coupling matrix file %s not found - this should be recomputed!\n",filename);
+     abort();
+  }
+
+  int line_count=0; // line counter
+  Float tmp_arr[int(pow(MAXORDER5+1,8))]; // array to hold flattened array
+
+  // Read in values to file (straightforward as file has no comment strings and one value per line)
+  while (fgets(line,1000000,fp)!=NULL) {
+   tmp_arr[line_count]=atof(line);
+   line_count++;
+  }
+
+  // Now reconstruct array using the triangle conditions to pick out the relevant elements
+  // note that we don't need to initialize the other elements as they're never used
+  for(int l1=0,n=0;l1<=MAXORDER5;l1++){
+    for(int l2=0;l2<=MAXORDER5;l2++){
+      for(int l12=abs(l1-l2);l12<=fmin(MAXORDER5,l1+l2);l12++){
+        for(int l3=0;l3<=MAXORDER5;l3++){
+          for(int l4=abs(l12-l3);l4<=fmin(MAXORDER5,l12+l3);l4++){
+            for(int m1=-l1;m1<=l1;m1++){
+              for(int m2=-l2;m2<=l2;m2++){
+                for(int m3=-l3;m3<=l3;m3++){
+                  if(abs(m1+m2+m3)>l4) continue;
+                  fivepcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l4] = tmp_arr[n++];
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+void generate_5pcf_weights(){
+    // Generate the 5PCF weight array for the specific LMAX used here.
+    // This includes the additional normalization factors
+    // We fill up the one-dimensional weight5pcf array
+
+    // We start by initializing all elements to zero
+    for(int x=0; x<int(pow(ORDER+1,8)); x++){
+      weight5pcf[x] = 0.0;
+    }
+
+    int m4, n=0;
+    // Now load 5PCF weight matrices, only filling values that don't violate triangle conditions
+    for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l12,l3,l4,m1,m2,m3) octuplet (m4 is specified by triangle conditions)
+      for(int l2=0; l2<=ORDER; l2++){
+        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+          for(int l3=0; l3<=ORDER; l3++){
+            for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++){
+              if(pow(-1,l1+l2+l3+l4)==-1) continue; // skip odd parity combinationss
+              // NB: we sum m_i from -li to li here. m4>=0 however.
+              for(int m1=-l1; m1<=l1; m1++){
+                for(int m2=-l2; m2<=l2; m2++){
+                  for(int m3=-l3; m3<=l3; m3++){
+                    m4 = -m1-m2-m3;
+                    if (m4<0) continue; // only need to use m4>=0
+                    if (m4>l4) continue; // this violates triangle conditions
+                    // Now add in the weights. This is 2 * coupling[l1, l2, l12, l3, l4, m1, m2, m3, -m1-m2-m3] * (-1)^{m1+m2+m3} * S(m1+m2+m3) with S(M) = 1/2 if M=0 and unity else.
+                    // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3+m4} (which is trivial)
+                    weight5pcf[n] = 2.*pow(-1.,m1+m2+m3)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+m4]);
+                    weight5pcf[n] *= fivepcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l4];
+                    if(m4==0) weight5pcf[n] /= 2;
+                    // also add in factors from complex conjugations of m1->m3
+                    if(m1<0) weight5pcf[n] *= pow(-1.,m1);
+                    if(m2<0) weight5pcf[n] *= pow(-1.,m2);
+                    if(m3<0) weight5pcf[n] *= pow(-1.,m3);
+                    n++;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+#endif
+
+#ifdef SIXPCF
+// Create array for 6PCF weights (to be filled at runtime from almnorm and the coupling matrices)
+// These are of the same form as the 5PCF matrices, and store both odd and even m1, m2, m3, m4.
+// Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
+
+Float weight6pcf[int(pow(ORDER+1,11))];
+
+// array for all possible weights up to MAX_ORDER
+Float sixpcf_coupling[(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)];
+
+void load_6pcf_coupling(){
+  // Load the full coupling matrix up to ell = MAXORDER6 from file
+  // This is defined as C_m^Lambda = (-1)^{l1+l2+l3+l4+l5} Sum_{m12, m123} (-1)^{l12-m12+l123-m123} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l123, -m123)]ThreeJ[(l123, m123) (l4, m4) (l5, m5)]
+  // Data-type is a 5D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l123, (l4, m4), l5} with the (l_i,m_i) sections flattened.
+  // It will be trimmed to the relevant l_max at runtime.
+
+  char line[100000];
+  FILE *fp;
+  char filename [100];
+  snprintf(filename,sizeof(filename), "coupling_matrices/weights_6pcf_LMAX%d.txt",MAXORDER6);
+
+  fp = fopen(filename,"r");
+  if (fp==NULL){
+     fprintf(stderr,"Coupling matrix file %s not found - this should be recomputed!\n",filename);
+     abort();
+  }
+
+  int line_count=0; // line counter
+  Float tmp_arr[int(pow(MAXORDER6+1,11))]; // array to hold flattened array
+
+  // Read in values to file (straightforward as file has no comment strings and one value per line)
+  while (fgets(line,10000000,fp)!=NULL) {
+   tmp_arr[line_count]=atof(line);
+   line_count++;
+  }
+
+  // Now reconstruct array using the triangle conditions to pick out the relevant elements
+  // note that we don't need to initialize the other elements as they're never used
+  for(int l1=0,n=0;l1<=MAXORDER6;l1++){
+    for(int l2=0;l2<=MAXORDER6;l2++){
+      for(int l12=abs(l1-l2);l12<=fmin(MAXORDER6,l1+l2);l12++){
+        for(int l3=0;l3<=MAXORDER6;l3++){
+          for(int l123=abs(l12-l3);l123<=fmin(MAXORDER6,l12+l3);l123++){
+            for(int l4=0;l4<=MAXORDER6;l4++){
+              for(int l5=abs(l123-l4);l5<=fmin(MAXORDER6,l123+l4);l5++){
+                for(int m1=-l1;m1<=l1;m1++){
+                  for(int m2=-l2;m2<=l2;m2++){
+                    for(int m3=-l3;m3<=l3;m3++){
+                      for(int m4=-l4;m4<=l4;m4++){
+                        if(abs(m1+m2+m3+m4)>l5) continue;
+                        sixpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l123][l4*l4+l4+m4][l5] = tmp_arr[n++];
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+void generate_6pcf_weights(){
+  // Generate the 6PCF weight array for the specific LMAX used here.
+  // This includes the additional normalization factors
+  // We fill up the one-dimensional weight5pcf array
+
+  // We start by initializing them to zero
+  for(int x=0; x<int(pow(ORDER+1,11)); x++){
+    weight6pcf[x] = 0.0;
+  }
+
+  int m5, n=0;
+  // Now load 6PCF weight matrices, only filling values that don't violate triangle conditions
+  for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l12,l3,123,l4,l5,m1,m2,m3,m4) undecuplet (m5 is specified by triangle conditions)
+    for(int l2=0; l2<=ORDER; l2++){
+      for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+        for(int l3=0; l3<=ORDER; l3++){
+          for(int l123=fabs(l12-l3);l123<=fmin(ORDER,l12+l3);l123++){
+            for(int l4=0; l4<=ORDER; l4++){
+              for(int l5=fabs(l123-l4);l5<=fmin(ORDER,l123+l4);l5++){
+                if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity combinationss
+                // NB: we sum m_i from -li to li here. m5>=0 however.
+                for(int m1=-l1; m1<=l1; m1++){
+                  for(int m2=-l2; m2<=l2; m2++){
+                    for(int m3=-l3; m3<=l3; m3++){
+                      for(int m4=-l4; m4<=l4; m4++){
+                        m5 = -m1-m2-m3-m4;
+                        if (m5<0) continue; // only need to use m4>=0
+                        if (m5>l5) continue; // this violates triangle conditions
+                        // Now add in the weights. This is 2 * coupling[l1, l2, l12, l3, l123, l4, l5, m1, m2, m3, m4, -m1-m2-m3-m4] * (-1)^{m1+m2+m3+m4} * S(m1+m2+m3+m4) with S(M) = 1/2 if M=0 and unity else.
+                        // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3+m4} (which is trivial)
+                        weight6pcf[n] = 2.*pow(-1.,m1+m2+m3+m4)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+abs(m4)]*almnorm[l5*(1+l5)/2+m5]);
+                        weight6pcf[n] *= sixpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l123][l4*l4+l4+m4][l5];
+                        if(m5==0) weight6pcf[n] /= 2;
+                        // also add in factors from complex conjugations of m1->m4
+                        if(m1<0) weight6pcf[n] *= pow(-1.,m1);
+                        if(m2<0) weight6pcf[n] *= pow(-1.,m2);
+                        if(m3<0) weight6pcf[n] *= pow(-1.,m3);
+                        if(m4<0) weight6pcf[n] *= pow(-1.,m4);
+                        n++;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  };
 #endif
 
 
