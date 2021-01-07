@@ -6,7 +6,7 @@
 // maximum order for 5PCF
 #define MAXORDER5 5
 // maximum order for 6PCF
-#define MAXORDER6 2
+#define MAXORDER6 3
 
 #define NLM_MAX ((MAXORDER+1)*(MAXORDER+2)/2)
 #define NLM ((ORDER+1)*(ORDER+2)/2)
