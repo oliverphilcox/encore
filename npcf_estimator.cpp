@@ -312,6 +312,12 @@ int main(int argc, char *argv[]) {
   #else
     printf("5PCF: No\n");
   #endif
+  #ifdef SIXPCF
+    assert(ORDER<=MAXORDER6);
+    printf("6PCF: Yes\n");
+  #else
+    printf("6PCF: No\n");
+  #endif
     printf("\n");
 
     Particle *orig_p;
@@ -334,96 +340,22 @@ int main(int argc, char *argv[]) {
 
     // Compute the NPCF weights using the array of (squared) a_lm normalizations
 
-    // First create 3PCF weights with the additional factor of (-1)^l / Sqrt(2l+1) and *2 for m != 0 mode (from m -> -m symmetry)
-
-    // First initialize this to zero for safety
-    for(int x=0; x<NLM; x++) weight3pcf[x] = 0.;
-
-    for(int ell=0, n=0; ell<=ORDER; ell++){
-      for(int m=0; m<=ell; m++, n++){
-          // Add coupling weight, alm normalizations and symmetry factor of 2 unless m1=m2=0
-          // The (-1)^m factor comes from replacing a_{l-m} with its conjugate a_{lm}* later.
-          // This cancels with another (-1)^m factor in the coupling
-          weight3pcf[n] = 2.*almnorm[n]*threepcf_coupling[n]*pow(-1.,m);
-          if (m==0) weight3pcf[n] /= 2.;
-        }
-    }
+    load_3pcf_coupling(); // load matrix of weights from file into the `threepcf_coupling` array
+    generate_3pcf_weights(); // generate the 3pcf weights for this specific LMAX, including normalization factors. They are stored in weights3pcf
 
 #ifdef FOURPCF
-
-    // We start by initializing them to zero
-    for(int x=0; x<NLM*NLM*(ORDER+1); x++){
-      weight4pcf1[x] = 0.0;
-      weight4pcf2[x] = 0.0;
-    }
-
-    // Now load 4PCF weight matrices
-    for(int l1=0, n=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
-      for(int l2=0; l2<=ORDER; l2++){
-        for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++){
-          // We need to sum from m1=0 to l1 here. The second matrix is only non-zero for m1, m2 > 0.
-          for(int m1=0; m1<=l1; m1++){
-            for(int m2=0; m2<=l2; m2++,n++){
-
-              // First set of weights: 2 * coupling[l1,l2,l3,m1,m2,-m1-m2] * (-1)^{m1+m2} * sym(m1, m2), with sym(a,b) = 1/2 if a=b and unity else (see LaTeX for this).
-              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
-              weight4pcf1[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m1+m2])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
-              if((m1==0)&&(m2==0)) weight4pcf1[n]/=2.;
-
-              // Second set of weights: 2 * coupling[l1,l2,l3,m1,-m2,m2-m1] * (-1)^{m2} (see LaTeX for this).
-              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
-              // Note this is zero for m1=0 and/or m2=0
-              if((m1>0)&&(m2>0)){
-                weight4pcf2[n] = 2.*pow(-1.,m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+int(fabs(m2-m1))])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2-m2][l3];
-                if(m2<m1) weight4pcf2[n] *= pow(-1.,m1-m2); // absorbing later factor from complex conjugation for efficiency
-              }
-            }
-          }
-        }
-      }
-    }
+    load_4pcf_coupling(); // load matrix of weights from file into the `fourpcf_coupling` array
+    generate_4pcf_weights(); // generate the 4pcf weights for this specific LMAX, including normalization factors. They are stored in weights4pcf1 and weights4pcf2
 #endif
 
 #ifdef FIVEPCF
+    load_5pcf_coupling(); // load matrix of weights from file into the `fivepcf_coupling` array
+    generate_5pcf_weights(); // generate the 5pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
+#endif
 
-    // We start by initializing them to zero
-    for(int x=0; x<int(pow(ORDER+1,8)); x++){
-      weight5pcf[x] = 0.0;
-    }
-
-    int m4, n=0;
-    // Now load 5PCF weight matrices, only filling values that don't violate triangle conditions
-    for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l12,l3,l4,m1,m2,m3) octuplet (m4 is specified by triangle conditions)
-      for(int l2=0; l2<=ORDER; l2++){
-        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
-          for(int l3=0; l3<=ORDER; l3++){
-            for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++){
-              if(pow(-1,l1+l2+l3+l4)==-1) continue; // skip odd parity combinationss
-              // NB: we sum m_i from -li to li here. m4>=0 however.
-              for(int m1=-l1; m1<=l1; m1++){
-                for(int m2=-l2; m2<=l2; m2++){
-                  for(int m3=-l3; m3<=l3; m3++){
-                    m4 = -m1-m2-m3;
-                    if (m4<0) continue; // only need to use m4>=0
-                    if (m4>l4) continue; // this violates triangle conditions
-                    // Now add in the weights. This is 2 * coupling[l1, l2, l12, l3, m1, m2, m3, -m1-m2-m3] * (-1)^{m1+m2+m3} * S(m1+m2+m3) with S(M) = 1/2 if M=0 and unity else.
-                    // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3+m4} (which is trivial)
-                    weight5pcf[n] = 2.*pow(-1.,m1+m2+m3)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+m4]);
-                    weight5pcf[n] *= fivepcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l4];
-                    if(m4==0) weight5pcf[n] /= 2;
-                    // also add in factors from complex conjugations of m1->m3
-                    if(m1<0) weight5pcf[n] *= pow(-1.,m1);
-                    if(m2<0) weight5pcf[n] *= pow(-1.,m2);
-                    if(m3<0) weight5pcf[n] *= pow(-1.,m3);
-                    n++;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+#ifdef SIXPCF
+    load_6pcf_coupling(); // load matrix of weights from file into the `sixpcf_coupling` array
+    generate_6pcf_weights(); // generate the 6pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
 #endif
 
       // Now ready to compute!

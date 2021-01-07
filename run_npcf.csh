@@ -4,7 +4,7 @@
 ### Shell script for running the NPCF-Estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
 #
 # This can be run either from the terminal or as a SLURM script (using the below parameters).
-# The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 3PCF/4PCF/5PCF) before this script is run.
+# The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 3PCF/4PCF/5PCF/6PCF) before this script is run.
 # The script should be run from the code directory
 # This is adapted from a similar script by Daniel Eisenstein.
 # In the input directory, we expect compressed .gz files labelled {root}.data.gz, {root}.ran.{IJ}.gz
@@ -12,6 +12,7 @@
 # We expect the summed weights to be the same for the data and each random catalog, but the random weights should be negative
 # This script will compute the D^N counts, the (D-R)^N counts for 32 random subsets, and the R^N counts for one subset (should be sufficient).
 # The output will be a set of .zeta_{N}pcf.txt files in the specified directory as well as a .tgz compressed directory of other intermediary outputs
+# Note that performing edge-correction is slow for the 5PCF and 6PCF since 9j symbols must be computed.
 #
 # NB: If needed, we could access a task ID by SLURM_ARRAY_TASK_ID, if we're running with SLURM
 ##########################################################
@@ -28,6 +29,7 @@
 
 # Main inputs
 set useAVX = 1 # whether we have AVX support
+set periodic = 0 # whether to run with periodic boundary conditions (should also be set in Makefile)
 set rmax = 170 # maximum radius in Mpc/h
 
 # Other inputs
@@ -38,7 +40,7 @@ set ngrid = 50 # grid-size for accelerating pair count
 set root = boss_cmass # root for data filenames
 set ranroot = boss_cmass # root for random filenames
 set in = /projects/QUIJOTE/Oliver/npcf/data # input directory (see above for required contents)
-set out = /projects/QUIJOTE/Oliver/npcf/output_5pcf # output file directory
+set out = /projects/QUIJOTE/Oliver/npcf/output_6pcf # output file directory
 set tmp = /scratch/gpfs/ophilcox/npcf_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
 
 # Load some python environment with numpy and sympy installed
@@ -138,10 +140,15 @@ foreach n ( 00 01 02 03 04 05 06 07 08 09 \
 
 end    # foreach D-R loop
 
-### Now need to combine the files and perform the edge-correction to get the full NPCF estimate
-# We do this in Python
-echo Combining files together and performing edge-corrections
-python combine_files.py $tmpout/$root >>& $errlog
+### Now need to combine the files to get the full NPCF estimate
+# We do this in Python, and perform edge-correction unless the periodic flag is not set
+if ($periodic) then
+  echo Combining files together without performing edge-corrections
+  python combine_files_periodic.py $tmpout/$root >>& $errlog
+else
+  echo Combining files together and performing edge-corrections
+  python combine_files.py $tmpout/$root >>& $errlog $OMP_NUM_THREADS
+endif
 
 # Do some cleanup
 rm $tmp/$root.data $multfile
