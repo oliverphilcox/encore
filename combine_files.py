@@ -250,7 +250,6 @@ for N in Ns:
         print("Computing 6PCF coupling matrix on %d CPUs"%threads)
 
         def compute_matrix_coeff(i):
-            print("Computing coefficient %d of %d"%(i+1,len(ell_1)))
             # output submatrix
             tmp_out = np.zeros((len(ell_1),len(bin1)))
 
@@ -283,8 +282,7 @@ for N in Ns:
 
         pool = multiprocessing.Pool(threads)
         coupling_matrix = np.asarray(list(pool.map(compute_matrix_coeff, range(len(ell_1)))))
-        print("Coupling matrix computed")
-
+        
         ## Now invert matrix equation to get zeta
         # Note that our matrix definition is symmetric
         print("Coupling matrix computed")

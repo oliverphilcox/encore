@@ -20,7 +20,7 @@
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.
-#define ORDER 2
+#define ORDER 1
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!
