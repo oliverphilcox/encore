@@ -16,14 +16,14 @@ class NPCF {
 
     // Array to hold the 3PCF
     #define NL (ORDER+1)
-    #define N3PCF (NBIN*(1+NBIN)/2)
+    #define N3PCF (NBIN*(NBIN-1)/2) // only compute bin1 < bin2
     Float threepcf[N3PCF*NL];
 
 #ifdef FOURPCF
     STimer BinTimer4;
 
 // Sizes of 4pcf array
-#define N4PCF (NBIN*(1+NBIN)*(2+NBIN)/6)
+#define N4PCF (NBIN*(NBIN-1)*(NBIN-2)/6)
 
     // Array to hold the 4PCF (some bins will violate triangle condition / parity and be empty
     Float *fourpcf;
@@ -36,7 +36,7 @@ class NPCF {
     STimer BinTimer5;
 
 // Sizes of 5pcf array
-#define N5PCF (NBIN*(1+NBIN)*(2+NBIN)*(3+NBIN))/24
+#define N5PCF (NBIN*(NBIN-1)*(NBIN-2)*(NBIN-3))/24
 
     // Array to hold the 5PCF (including only even-parity, and triangle-condition-satisfying bins)
     Float *fivepcf;
@@ -48,7 +48,7 @@ class NPCF {
     STimer BinTimer6;
 
 // Sizes of 5pcf array
-#define N6PCF (NBIN*(1+NBIN)*(2+NBIN)*(3+NBIN)*(4+NBIN))/120
+#define N6PCF (NBIN*(NBIN-1)*(NBIN-2)*(NBIN-3)*(NBIN-4))/120
 
     // Array to hold the 6PCF (including only even-parity, and triangle-condition-satisfying bins)
     Float *sixpcf;
@@ -77,7 +77,7 @@ class NPCF {
 	for (int i=0, ct=0; i<NBIN; i++) {
 	    bincounts[i] = 0;
 	    binweight[i] = 0.0;
-	    for (int j=i; j<NBIN; j++, ct++) {
+	    for (int j=i+1; j<NBIN; j++, ct++) {
     		for (int l_i=0; l_i<=ORDER; l_i++) {
     		    threepcf[l_i*N3PCF+ct] = 0.0;
     		}
@@ -184,7 +184,7 @@ class NPCF {
       // NB: we print zeta_ij[ell] for all j<=i
       // Old versions printed zeta_ij[ell]/zeta_ij[0] and in a different order
 	for (int i=0, ct=0; i<NBIN; i++) {
-	    for (int j=i; j<NBIN; j++,ct++) {
+	    for (int j=i+1; j<NBIN; j++,ct++) {
 		if (j==i) printf("Multipole Power %2d %9lld %9.0f\n",
 				j, bincounts[j], binweight[j]);
 		//if (j==i) {
@@ -238,14 +238,14 @@ class NPCF {
        // First print the indices of the first radial bin
        fprintf(OutFile," \t"); // empty l1 specifier
        for(int i=0;i<NBIN;i++){
-         for(int j=i; j<NBIN; j++) fprintf(OutFile,"%2d\t",i);
+         for(int j=i+1; j<NBIN; j++) fprintf(OutFile,"%2d\t",i);
        }
        fprintf(OutFile," \n");
 
        // Print the indices of the second radial bin
        fprintf(OutFile,"\t"); // empty ell specifier
        for(int i=0;i<NBIN;i++){
-         for(int j=i; j<NBIN; j++) fprintf(OutFile,"%2d\t",j);
+         for(int j=i+1; j<NBIN; j++) fprintf(OutFile,"%2d\t",j);
        }
        fprintf(OutFile,"\n");
 
@@ -254,7 +254,7 @@ class NPCF {
          fprintf(OutFile,"%d\t",ell);
 
            for (int i=0, ct=0; i<NBIN; i++){
-             for(int j=i; j<NBIN; j++, ct++){
+             for(int j=i+1; j<NBIN; j++, ct++){
                 fprintf(OutFile,"%le\t",threepcf[ell*N3PCF+ct]);
               }
           }
@@ -287,8 +287,8 @@ class NPCF {
         // First print the indices of the radial bins
         fprintf(OutFile2,"\t\t\t"); // empty l1,l2,l3 specifier
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
               fprintf(OutFile2,"%2d\t",i);
             }
           }
@@ -297,8 +297,8 @@ class NPCF {
 
         fprintf(OutFile2,"\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
               fprintf(OutFile2,"%2d\t",j);
             }
           }
@@ -307,8 +307,8 @@ class NPCF {
 
         fprintf(OutFile2,"\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
               fprintf(OutFile2,"%2d\t",k);
             }
           }
@@ -355,9 +355,9 @@ class NPCF {
         // First print the indices of the radial bins
         fprintf(OutFile3,"\t\t\t\t"); // empty l1,l2,l12,l3,l4 specifier
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
                 fprintf(OutFile3,"%2d\t",i);
               }
             }
@@ -367,9 +367,9 @@ class NPCF {
 
         fprintf(OutFile3,"\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
                 fprintf(OutFile3,"%2d\t",j);
               }
             }
@@ -379,9 +379,9 @@ class NPCF {
 
         fprintf(OutFile3,"\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
                 fprintf(OutFile3,"%2d\t",k);
               }
             }
@@ -391,9 +391,9 @@ class NPCF {
 
         fprintf(OutFile3,"\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
                 fprintf(OutFile3,"%2d\t",l);
               }
             }
@@ -444,10 +444,10 @@ class NPCF {
         // First print the indices of the radial bins
         fprintf(OutFile4,"\t\t\t\t\t"); // empty l1,l2,l12,l3,l123,l4,l5 specifier
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
-                for(int m=l; m<NBIN; m++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
+                for(int m=l+1; m<NBIN; m++){
                   fprintf(OutFile4,"%2d\t",i);
                 }
               }
@@ -458,10 +458,10 @@ class NPCF {
 
         fprintf(OutFile4,"\t\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
-                for(int m=l; m<NBIN; m++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
+                for(int m=l+1; m<NBIN; m++){
                   fprintf(OutFile4,"%2d\t",j);
                 }
               }
@@ -472,10 +472,10 @@ class NPCF {
 
         fprintf(OutFile4,"\t\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
-                for(int m=l; m<NBIN; m++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
+                for(int m=l+1; m<NBIN; m++){
                   fprintf(OutFile4,"%2d\t",k);
                 }
               }
@@ -486,10 +486,10 @@ class NPCF {
 
         fprintf(OutFile4,"\t\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
-                for(int m=l; m<NBIN; m++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
+                for(int m=l+1; m<NBIN; m++){
                   fprintf(OutFile4,"%2d\t",l);
                 }
               }
@@ -500,10 +500,10 @@ class NPCF {
         fprintf(OutFile4,"\n");
         fprintf(OutFile4,"\t\t\t\t\t");
         for(int i=0;i<NBIN;i++){
-          for(int j=i; j<NBIN; j++){
-            for(int k=j; k<NBIN; k++){
-              for(int l=k; l<NBIN; l++){
-                for(int m=l; m<NBIN; m++){
+          for(int j=i+1; j<NBIN; j++){
+            for(int k=j+1; k<NBIN; k++){
+              for(int l=k+1; l<NBIN; l++){
+                for(int m=l+1; m<NBIN; m++){
                   fprintf(OutFile4,"%2d\t",m);
                 }
               }
@@ -584,7 +584,7 @@ class NPCF {
 
 
 	for (int i=0, ct=0; i<NBIN; i++) {
-	    for (int j=i; j<NBIN; j++, ct++) {
+	    for (int j=i+1; j<NBIN; j++, ct++) {
   		  // Fill in a triangle of threepcf radial bins.
     		// We want to compute the sum over m of Ylm[i] Yl(-m)[j] = Ylm[i]Ylm*[j](-1)^m
     		// For m=0, that's just a_l0^2
@@ -696,12 +696,12 @@ class NPCF {
                   alm1w = alm1wlist[i];
 
                   // Iterate over second bin
-                  for(int j=i; j<NBIN; j++){
+                  for(int j=i+1; j<NBIN; j++){
 
                     alm2 = alm2list[j]*alm1w;
 
                     // Iterate over final bin
-                    for(int k=j; k<NBIN; k++, bin_index++){
+                    for(int k=j+1; k<NBIN; k++, bin_index++){
 
                       fourpcf[bin_index] += (alm2*alm3conjlist1[k]).real();
                     }
@@ -717,12 +717,12 @@ class NPCF {
                   alm1w = alm1wlist[i];
 
                   // Iterate over second bin
-                  for(int j=i; j<NBIN; j++){
+                  for(int j=i+1; j<NBIN; j++){
 
                     alm2conj = alm2conjlist[j]*alm1w;
 
                     // Iterate over final bin
-                    for(int k=j; k<NBIN; k++, bin_index++){
+                    for(int k=j+1; k<NBIN; k++, bin_index++){
 
                       fourpcf[bin_index] += (alm3list2[k]*alm2conj).real();
                     }
@@ -737,13 +737,13 @@ class NPCF {
                   alm1w = alm1wlist[i];
 
                   // Iterate over second bin
-                  for(int j=i; j<NBIN; j++){
+                  for(int j=i+1; j<NBIN; j++){
 
                     alm2 = alm2list[j]*alm1w;
                     alm2conj = alm2conjlist[j]*alm1w;
 
                     // Iterate over final bin
-                    for(int k=j; k<NBIN; k++, bin_index++){
+                    for(int k=j+1; k<NBIN; k++, bin_index++){
 
                       // First combination
                       fourpcf[bin_index] += (alm2*alm3conjlist1[k]).real() + (alm3list2[k]*alm2conj).real();
@@ -854,17 +854,17 @@ class NPCF {
                     alm1w = alm1wlist[i];
 
                     // Iterate over second bin
-                    for(int j=i; j<NBIN; j++){
+                    for(int j=i+1; j<NBIN; j++){
 
                       alm2 = alm2list[j]*alm1w;
 
                       // Iterate over third bin
-                      for(int k=j; k<NBIN; k++){
+                      for(int k=j+1; k<NBIN; k++){
 
                         alm3 = alm3list[k]*alm2;
 
                         // Iterate over final bin and advance the 5PCF array counter
-                        for(int l=k; l<NBIN; l++, bin_index++){
+                        for(int l=k+1; l<NBIN; l++, bin_index++){
                             // Add contribution to 5PCF array
                             fivepcf[bin_index] += (alm3*alm4list[l]).real();
 
@@ -993,22 +993,22 @@ class NPCF {
                             alm1w = alm1wlist[i];
 
                             // Iterate over second bin
-                            for(int j=i; j<NBIN; j++){
+                            for(int j=i+1; j<NBIN; j++){
 
                               alm2 = alm2list[j]*alm1w;
 
                               // Iterate over third bin
-                              for(int k=j; k<NBIN; k++){
+                              for(int k=j+1; k<NBIN; k++){
 
                                 alm3 = alm3list[k]*alm2;
 
                                 // Iterate over fourth bin
-                                for(int l=k; l<NBIN; l++){
+                                for(int l=k+1; l<NBIN; l++){
 
                                   alm4 = alm4list[k]*alm3;
 
                                   // Iterate over final bin and advance the 6PCF array counter
-                                  for(int m=l; m<NBIN; m++, bin_index++){
+                                  for(int m=l+1; m<NBIN; m++, bin_index++){
                                       // Add contribution to 6PCF array
                                       sixpcf[bin_index] += (alm4*alm5list[l]).real();
                                     }

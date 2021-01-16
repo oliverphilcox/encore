@@ -270,7 +270,7 @@ void load_5pcf_coupling(){
   }
 
   int line_count=0; // line counter
-  Float tmp_arr[(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)]; // array to hold flattened array
+  Float tmp_arr[(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)]; // array to hold flattened array
 
   // Read in values to file (straightforward as file has no comment strings and one value per line)
   while (fgets(line,1000000,fp)!=NULL) {

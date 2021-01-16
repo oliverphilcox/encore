@@ -282,7 +282,7 @@ for N in Ns:
 
         pool = multiprocessing.Pool(threads)
         coupling_matrix = np.asarray(list(pool.map(compute_matrix_coeff, range(len(ell_1)))))
-        
+
         ## Now invert matrix equation to get zeta
         # Note that our matrix definition is symmetric
         print("Coupling matrix computed")
