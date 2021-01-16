@@ -53,7 +53,7 @@ conda activate ptenv
 #set OMP_NUM_THREADS = 4
 
 # Set number of threads (with SLURM)
-setenv OMP_NUM_THREADS $SLURM_NPROCS
+setenv OMP_NUM_THREADS = $SLURM_NPROCS
 
 # Define command to run the C++ code
 if ($useAVX) then

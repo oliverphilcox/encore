@@ -177,7 +177,7 @@ void load_4pcf_coupling(){
   }
 
   int line_count=0; // line counter
-  Float tmp_arr[int(pow(MAXORDER+1,5))]; // array to hold flattened array (size is an overestimate)
+  Float tmp_arr[(MAXORDER+1)*(MAXORDER+1)*(MAXORDER+1)*(MAXORDER+1)*(MAXORDER+1)]; // array to hold flattened array (size is an overestimate)
 
   // Read in values to file (straightforward as file has no comment strings and one value per line)
   while (fgets(line,1000000,fp)!=NULL) {
@@ -247,7 +247,7 @@ void generate_4pcf_weights(){
 // Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
 // Notably they need both odd and even m_1, m_2, m_3 to be stored.
 
-Float weight5pcf[int(pow(ORDER+1,8))];
+Float weight5pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)];
 
 // array for all possible weights up to MAX_ORDER
 Float fivepcf_coupling[(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)];
@@ -270,7 +270,7 @@ void load_5pcf_coupling(){
   }
 
   int line_count=0; // line counter
-  Float tmp_arr[int(pow(MAXORDER5+1,8))]; // array to hold flattened array
+  Float tmp_arr[(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)]; // array to hold flattened array
 
   // Read in values to file (straightforward as file has no comment strings and one value per line)
   while (fgets(line,1000000,fp)!=NULL) {
@@ -352,7 +352,7 @@ void generate_5pcf_weights(){
 // These are of the same form as the 5PCF matrices, and store both odd and even m1, m2, m3, m4.
 // Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
 
-Float weight6pcf[int(pow(ORDER+1,11))];
+Float weight6pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)];
 
 // array for all possible weights up to MAX_ORDER
 Float sixpcf_coupling[(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)];
@@ -375,7 +375,7 @@ void load_6pcf_coupling(){
   }
 
   int line_count=0; // line counter
-  Float tmp_arr[int(pow(MAXORDER6+1,11))]; // array to hold flattened array
+  Float tmp_arr[(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)]; // array to hold flattened array
 
   // Read in values to file (straightforward as file has no comment strings and one value per line)
   while (fgets(line,10000000,fp)!=NULL) {

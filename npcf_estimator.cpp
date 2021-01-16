@@ -16,11 +16,11 @@
 #endif
 
 // NBIN is the number of bins we'll sort the radii into.
-#define NBIN 2
+#define NBIN 5
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.
-#define ORDER 1
+#define ORDER 3
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!
@@ -239,6 +239,8 @@ int main(int argc, char *argv[]) {
     Float cellsize;
 
     STimer TotalTime, Prologue, Epilogue, MultipoleTime, IOTime;
+    // Detailed timings
+    STimer InfileReadTime, WeightsReadTime, GridTime, OutputTime;
 
     TotalTime.Start();
     Prologue.Start();
@@ -320,12 +322,12 @@ int main(int argc, char *argv[]) {
   #endif
     printf("\n");
 
+    InfileReadTime.Start();
     Particle *orig_p;
     Float3 shift;
     if (make_random) {
         // If you want to just make random particles instead:
         assert(np>0);
-        assert(boxsize==rescale);    // Nonsense if not!
         orig_p = make_particles(rect_boxsize, np);
         cellsize = rect_boxsize.x/nside; // define size of cells
     } else {
@@ -338,7 +340,11 @@ int main(int argc, char *argv[]) {
     if (qinvert) invert_weights(orig_p, np);
     if (qbalance) balance_weights(orig_p, np);
 
+    InfileReadTime.Stop();
+
     // Compute the NPCF weights using the array of (squared) a_lm normalizations
+
+    WeightsReadTime.Start();
 
     load_3pcf_coupling(); // load matrix of weights from file into the `threepcf_coupling` array
     generate_3pcf_weights(); // generate the 3pcf weights for this specific LMAX, including normalization factors. They are stored in weights3pcf
@@ -357,6 +363,9 @@ int main(int argc, char *argv[]) {
     load_6pcf_coupling(); // load matrix of weights from file into the `sixpcf_coupling` array
     generate_6pcf_weights(); // generate the 6pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
 #endif
+
+    WeightsReadTime.Stop();
+    GridTime.Start();
 
       // Now ready to compute!
     // Sort the particles into the grid.
@@ -383,6 +392,7 @@ int main(int argc, char *argv[]) {
 	pairs[0].load(smload->xi0, smload->xi2);
 	    // Put all of the previous work in thread 0
     }
+    GridTime.Stop();
     IOTime.Stop();
 
     zero_power();
@@ -398,9 +408,11 @@ int main(int argc, char *argv[]) {
 
     // Output the results
     Epilogue.Start();
+    OutputTime.Start();
     sum_power();
     printf("\n# Binned weighted pair counts, monopole and quadrupole\n");
     pairs[0].report_pairs();
+    OutputTime.Stop();
 
     // old routine for printing power to terminal
     //printf("\n# Multipole power\n");
@@ -427,5 +439,12 @@ int main(int argc, char *argv[]) {
     printf("# Epilogue: %6.3f s (%4.1f%%)\n", Epilogue.Elapsed(), Epilogue.Elapsed()/TotalTime.Elapsed()*100.0);
     printf("# IO Time:  %6.3f s (%4.1f%%)\n", IOTime.Elapsed(), IOTime.Elapsed()/TotalTime.Elapsed()*100.0);
     printf("# Pairs:    %6.3f s (%4.1f%%)\n", MultipoleTime.Elapsed(), MultipoleTime.Elapsed()/TotalTime.Elapsed()*100.0);
+
+    // Detailed timing breakdown
+    printf("\n# Load Particles: %6.3f s (%4.1f%%)\n", InfileReadTime.Elapsed(), InfileReadTime.Elapsed()/TotalTime.Elapsed()*100.0);
+    printf("# Load Weights: %6.3f s (%4.1f%%)\n", WeightsReadTime.Elapsed(), WeightsReadTime.Elapsed()/TotalTime.Elapsed()*100.0);
+    printf("# Grid Allocation:  %6.3f s (%4.1f%%)\n", GridTime.Elapsed(), GridTime.Elapsed()/TotalTime.Elapsed()*100.0);
+    printf("# NPCF Output:    %6.3f s (%4.1f%%)\n", OutputTime.Elapsed(), OutputTime.Elapsed()/TotalTime.Elapsed()*100.0);
+
     return 0;
 }

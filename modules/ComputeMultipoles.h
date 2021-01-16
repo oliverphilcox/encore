@@ -16,11 +16,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
     // But some cells have trivial amounts of work, so we will first make a list of the work.
     // Including the empty cells appears to fool the dynamic thread allocation sometimes.
 
-#ifndef OPENMP
-    STimer accmult; // measure the time spent accumulating powers for multipoles
-    // note this is only available for single-thread runs
-#endif
-
+    STimer accmult, powertime; // measure the time spent accumulating powers for multipoles
 
     // We're going to loop only over the non-empty cells.
 #ifdef OPENMP
@@ -67,7 +63,8 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 	    // Then loop over secondaries, cell-by-cell
 	    integer3 delta;
-	    for (delta.x = -maxsep; delta.x <= maxsep; delta.x++)
+      if(thread==0) accmult.Start();
+    	for (delta.x = -maxsep; delta.x <= maxsep; delta.x++)
 	    for (delta.y = -maxsep; delta.y <= maxsep; delta.y++)
 	    for (delta.z = -maxsep; delta.z <= maxsep; delta.z++) {
 		const int samecell = (delta.x==0&&delta.y==0&&delta.z==0)?1:0;
@@ -85,7 +82,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 		// This is the position of the particle as viewed from the
 		// secondary cell.
 		// Now loop over the particles in this secondary cell
-		for (int k = sec.start; k<sec.start+sec.np; k++) {
+    for (int k = sec.start; k<sec.start+sec.np; k++) {
 		    // Now we're considering these two particles!
 		    if (samecell&&j==k) continue;   // Exclude self-count
 		    if (mloaded && grid->p[k].w>=0) continue;
@@ -111,10 +108,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 		    //continue;   // Skip the multipole creation
 
-#ifndef OPENMP
-    accmult.Start();
-#endif
-		    // Accumulate the multipoles
+        // Accumulate the multipoles
 #ifdef AVX 	    // AVX only available for ORDER>=1
 		    if (ORDER) mult[bin].addAVX(dx.x, dx.y, dx.z, grid->p[k].w);
 			    else  mult[bin].add(dx.x, dx.y, dx.z, grid->p[k].w);
@@ -122,12 +116,10 @@ void compute_multipoles(Grid *grid, Float rmax) {
 		    mult[bin].add(dx.x, dx.y, dx.z, grid->p[k].w);
 #endif
 
-#ifndef OPENMP
-  accmult.Stop();
-#endif
-		} // Done with this secondary particle
+  } // Done with this secondary particle
 	    } // Done with this secondary cell
-	    for (int b=0; b<NBIN; b++) mult[b].finish();   // Finish the multipoles
+      for (int b=0; b<NBIN; b++) mult[b].finish();   // Finish the multipoles
+      if(thread==0) accmult.Stop();
 
 	    if (smsave && grid->p[j].w>=0) {
 	        // We're saving multipoles, and this particle has positive weight.
@@ -137,7 +129,9 @@ void compute_multipoles(Grid *grid, Float rmax) {
 
 	    // Now add these multipoles into the cross-powers
 	    // This step takes very little time for the 3PCF, but is time-limiting for higher-point functions.
+      if(thread==0) powertime.Start();
 	    npcf[thread].add_to_power(mult, primary_w);
+      if(thread==0) powertime.Stop();
 
 	} // Done with this primary particle
     } // Done with this primary cell, end of omp pragma
@@ -157,6 +151,11 @@ void compute_multipoles(Grid *grid, Float rmax) {
     float expected = grid->np * (4*M_PI/3.0)*pow(rmax,3.0)/(boxsize.x*boxsize.y*boxsize.z);
     printf("# We expected %1.0f pairs per primary particle, off by a factor of %f.\n", expected, cnt/(expected*grid->np));
     delete[] mlist;
+
+    // Detailed timing breakdown
+    printf("\n# Accumulate Powers: %6.3f s\n", accmult.Elapsed());
+    printf("# Compute Power: %6.3f s\n\n", powertime.Elapsed());
+
     return;
 }
 
