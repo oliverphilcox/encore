@@ -838,7 +838,7 @@ class NPCF {
                   if (weight==0) continue;
 
                   tmp_lm3 = l3*(l3+1)/2+fabs(m3);
-                  tmp_lm4 = l4*(l4+1)/2;
+                  tmp_lm4 = l4*(l4+1)/2+m4;
 
                   // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
                   // No conjugates needed for a_l4m4 since we fixed m4>=0!
@@ -977,7 +977,7 @@ class NPCF {
                           if (weight==0) continue;
 
                           tmp_lm4 = l4*(l4+1)/2+fabs(m4);
-                          tmp_lm5 = l5*(l5+1)/2;
+                          tmp_lm5 = l5*(l5+1)/2+m5;
 
                           // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
                           // No conjugates needed for a_l5m5 since we fixed m5>=0!
