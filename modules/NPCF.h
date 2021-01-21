@@ -644,10 +644,7 @@ class NPCF {
         for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++,zeta_index+=N4PCF){
 
           // Skip any odd multipoles with odd parity
-          if(pow(-1,l1+l2+l3)==-1){
-            n+=(l1+1)*(l2+1); // make sure to still update the index counter!
-            continue;
-          }
+          if(pow(-1,l1+l2+l3)==-1) continue;
 
           // Iterate over m1, starting at zero
           for(int m1=0; m1<=l1; m1++){
@@ -657,7 +654,7 @@ class NPCF {
             // Create temporary copy of a_l1m1
             for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
 
-            // Iterate over m2, starting at zero
+            // Iterate over m2, starting at zero and update index counter
             for(int m2=0; m2<=l2; m2++, n++){
 
               // Store relevant weights
@@ -818,6 +815,7 @@ class NPCF {
 
                // Iterate over all m2 (including negative)
                for(int m2=-l2; m2<=l2; m2++){
+                 if(abs(m1+m2)>l12) continue; // m12 condition
 
                  tmp_lm2 = l2*(l2+1)/2+fabs(m2);
 
@@ -948,6 +946,7 @@ class NPCF {
 
                      // Iterate over all m2 (including negative)
                      for(int m2=-l2; m2<=l2; m2++){
+                       if(abs(m1+m2)>l12) continue; // m12 condition
 
                        tmp_lm2 = l2*(l2+1)/2+fabs(m2);
 
@@ -957,6 +956,7 @@ class NPCF {
 
                        // Iterate over m3 (including negative)
                       for(int m3=-l3; m3<=l3; m3++){
+                        if(abs(m1+m2+m3)>l123) continue;
 
                         tmp_lm3 = l3*(l3+1)/2+fabs(m3);
 
@@ -1005,12 +1005,12 @@ class NPCF {
                                 // Iterate over fourth bin
                                 for(int l=k+1; l<NBIN; l++){
 
-                                  alm4 = alm4list[k]*alm3;
+                                  alm4 = alm4list[l]*alm3;
 
                                   // Iterate over final bin and advance the 6PCF array counter
                                   for(int m=l+1; m<NBIN; m++, bin_index++){
                                       // Add contribution to 6PCF array
-                                      sixpcf[bin_index] += (alm4*alm5list[l]).real();
+                                      sixpcf[bin_index] += (alm4*alm5list[m]).real();
                                     }
                                   }
                                 }

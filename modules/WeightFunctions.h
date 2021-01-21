@@ -190,6 +190,7 @@ void load_4pcf_coupling(){
   for(int l1=0,n=0;l1<=MAXORDER;l1++){
     for(int l2=0;l2<=MAXORDER;l2++){
       for(int l3=abs(l1-l2);l3<=fmin(MAXORDER,l1+l2);l3++){
+        if(pow(-1,l1+l2+l3)==-1) continue; // skip odd parity
         for(int m1=-l1;m1<=l1;m1++){
           for(int m2=-l2; m2<=l2; m2++){
             if(abs(m1+m2)>l3) continue;
@@ -216,6 +217,7 @@ void generate_4pcf_weights(){
     for(int l1=0, n=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
       for(int l2=0; l2<=ORDER; l2++){
         for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++){
+          if(pow(-1,l1+l2+l3)==-1) continue; // skip odd parity
           // We need to sum from m1=0 to l1 here. The second matrix is only non-zero for m1, m2 > 0.
           for(int m1=0; m1<=l1; m1++){
             for(int m2=0; m2<=l2; m2++,n++){
@@ -280,15 +282,17 @@ void load_5pcf_coupling(){
 
   // Now reconstruct array using the triangle conditions to pick out the relevant elements
   // note that we don't need to initialize the other elements as they're never used
-  for(int l1=0,n=0;l1<=MAXORDER5;l1++){
+  for(int l1=0, n=0;l1<=MAXORDER5;l1++){
     for(int l2=0;l2<=MAXORDER5;l2++){
       for(int l12=abs(l1-l2);l12<=fmin(MAXORDER5,l1+l2);l12++){
         for(int l3=0;l3<=MAXORDER5;l3++){
           for(int l4=abs(l12-l3);l4<=fmin(MAXORDER5,l12+l3);l4++){
+            if(pow(-1,l1+l2+l3+l4)==-1) continue; // skip odd parity
             for(int m1=-l1;m1<=l1;m1++){
               for(int m2=-l2;m2<=l2;m2++){
+                if(abs(m1+m2)>l12) continue; // m12 condition
                 for(int m3=-l3;m3<=l3;m3++){
-                  if(abs(m1+m2+m3)>l4) continue;
+                  if(abs(m1+m2+m3)>l4) continue; // m4 condition
                   fivepcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l4] = tmp_arr[n++];
                 }
               }
@@ -321,6 +325,7 @@ void generate_5pcf_weights(){
               // NB: we sum m_i from -li to li here. m4>=0 however.
               for(int m1=-l1; m1<=l1; m1++){
                 for(int m2=-l2; m2<=l2; m2++){
+                  if(abs(m1+m2)>l12) continue; // m12 condition
                   for(int m3=-l3; m3<=l3; m3++){
                     m4 = -m1-m2-m3;
                     if (m4<0) continue; // only need to use m4>=0
@@ -392,11 +397,14 @@ void load_6pcf_coupling(){
           for(int l123=abs(l12-l3);l123<=fmin(MAXORDER6,l12+l3);l123++){
             for(int l4=0;l4<=MAXORDER6;l4++){
               for(int l5=abs(l123-l4);l5<=fmin(MAXORDER6,l123+l4);l5++){
+                if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity
                 for(int m1=-l1;m1<=l1;m1++){
                   for(int m2=-l2;m2<=l2;m2++){
+                    if(abs(m1+m2)>l12) continue; // m12 condition
                     for(int m3=-l3;m3<=l3;m3++){
+                      if(abs(m1+m2+m3)>l123) continue; // m123 condition
                       for(int m4=-l4;m4<=l4;m4++){
-                        if(abs(m1+m2+m3+m4)>l5) continue;
+                        if(abs(m1+m2+m3+m4)>l5) continue; // m4 condition
                         sixpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l123][l4*l4+l4+m4][l5] = tmp_arr[n++];
                       }
                     }
@@ -434,7 +442,9 @@ void generate_6pcf_weights(){
                 // NB: we sum m_i from -li to li here. m5>=0 however.
                 for(int m1=-l1; m1<=l1; m1++){
                   for(int m2=-l2; m2<=l2; m2++){
+                    if(abs(m1+m2)>l12) continue; // m12 condition
                     for(int m3=-l3; m3<=l3; m3++){
+                      if(abs(m1+m2+m3)>l123) continue; // m123 condition
                       for(int m4=-l4; m4<=l4; m4++){
                         m5 = -m1-m2-m3-m4;
                         if (m5<0) continue; // only need to use m4>=0

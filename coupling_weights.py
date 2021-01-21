@@ -3,6 +3,7 @@
 # These are saved in a .txt file as a one-dimensional array and will be read in by the C++ code.
 # Input parameters are N and LMAX (with 3<=N<=6).
 # We caution that the computation time scales as (LMAX+1)^{3N-7}, so large LMAX should be avoided for high N.
+# Note that we save only the parity-even coefficients (with even l1+l2+...+lN)
 
 import sys, os
 import numpy as np
@@ -42,6 +43,7 @@ if N==4:
     for l1 in range(LMAX+1):
         for l2 in range(LMAX+1):
             for l3 in range(abs(l1-l2),min(LMAX,l1+l2)+1):
+                if pow(-1.,l1+l2+l3)==-1: continue # odd parity
                 for m1 in range(-l1,l1+1):
                     for m2 in range(-l2,l2+1):
                         m3 = -m1-m2
@@ -59,9 +61,7 @@ if N==5:
     def WeightFunction(l1,l2,l12,l3,l4,m1,m2,m3,m4):
         """C_m^Lambda for 4th order isotropic basis function"""
         pref = pow(-1.,l1+l2+l3+l4)*np.sqrt(2.*l12+1.)
-        summ = 0.
-        for m12 in range(-l12,l12+1):
-            summ += wigner_3j(l1,l2,l12,m1,m2,-m12)*wigner_3j(l12,l3,l4,m12,m3,m4)*pow(-1.,l12-m12)
+        summ = wigner_3j(l1,l2,l12,m1,m2,-m1-m2)*wigner_3j(l12,l3,l4,m1+m2,m3,m4)*pow(-1.,l12-m1-m2)
         return summ*pref
 
     # Create 1D output matrix. The size is an overestimate and will be trimmed down later.
@@ -72,8 +72,10 @@ if N==5:
             for l12 in range(abs(l1-l2),min(LMAX,l1+l2)+1):
                 for l3 in range(LMAX+1):
                     for l4 in range(abs(l12-l3),min(LMAX,l12+l3)+1):
+                        if pow(-1.,l1+l2+l3+l4)==-1: continue # odd parity
                         for m1 in range(-l1,l1+1):
                             for m2 in range(-l2,l2+1):
+                                if abs(m1+m2)>l12: continue # m12 condition
                                 for m3 in range(-l3,l3+1):
                                     m4 = -m1-m2-m3
                                     if abs(m4)>l4: continue
@@ -90,10 +92,8 @@ if N==6:
     def WeightFunction(l1,l2,l12,l3,l123,l4,l5,m1,m2,m3,m4,m5):
         """C_m^Lambda for 5th order isotropic basis function"""
         pref = pow(-1.,l1+l2+l3+l4+l5)*np.sqrt(2.*l12+1.)*np.sqrt(2.*l123+1.)
-        summ = 0.
-        for m12 in range(-l12,l12+1):
-            for m123 in range(-l123,l123+1):
-                summ += wigner_3j(l1,l2,l12,m1,m2,-m12)*wigner_3j(l12,l3,l123,m12,m3,-m123)*wigner_3j(l123,l4,l5,m123,m4,m5)*pow(-1.,l12-m12+l123-m123)
+        # noting m12 = m1+m2, m123 = m1+m2+m3
+        summ = wigner_3j(l1,l2,l12,m1,m2,-m1-m2)*wigner_3j(l12,l3,l123,m1+m2,m3,-m1-m2-m3)*wigner_3j(l123,l4,l5,m1+m2+m3,m4,m5)*pow(-1.,l12-m1-m2+l123-m1-m2-m3)
         return summ*pref
 
     # Create 1D output matrix. The size is an overestimate and will be trimmed down later.
@@ -106,9 +106,12 @@ if N==6:
                     for l123 in range(abs(l12-l3),min(LMAX,l12+l3)+1):
                         for l4 in range(LMAX+1):
                             for l5 in range(abs(l123-l4),min(LMAX,l123+l4)+1):
+                                if pow(-1.,l1+l2+l3+l4+l5)==-1: continue # odd parity
                                 for m1 in range(-l1,l1+1):
                                     for m2 in range(-l2,l2+1):
+                                        if abs(m1+m2)>l12: continue # m12 condition
                                         for m3 in range(-l3,l3+1):
+                                            if abs(m1+m2+m3)>l123: continue # m123 condition
                                             for m4 in range(-l4,l4+1):
                                                 m5 = -m1-m2-m3-m4
                                                 if abs(m5)>l5: continue
