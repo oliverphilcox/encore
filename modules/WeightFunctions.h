@@ -119,13 +119,9 @@ void load_3pcf_coupling(){
      abort();
   }
 
-  int line_count=0; // line counter
-
-  // Read in values to file (straightforward as file has no comment strings and one value per line)
-  while (fgets(line,1000000,fp)!=NULL) {
-   threepcf_coupling[line_count]=atof(line);
-   line_count++;
-  }
+  // Read in values from file (straightforward as file has no comment strings and one value per line)
+  int line_count = 0;
+  while (fgets(line,1000000,fp)!=NULL) threepcf_coupling[line_count++]=atof(line);
   assert(line_count==NLM_MAX);
 };
 
@@ -176,14 +172,15 @@ void load_4pcf_coupling(){
      abort();
   }
 
-  int line_count=0; // line counter
-  Float tmp_arr[(MAXORDER+1)*(MAXORDER+1)*(MAXORDER+1)*(MAXORDER+1)*(MAXORDER+1)]; // array to hold flattened array (size is an overestimate)
+  // First count number of lines in file, and allocate memory (straightforward as file has no comment strings and one value per line)
+  int line_count=0;
+  while (fgets(line,1000,fp)!=NULL) line_count++;
+  rewind(fp);
+  Float* tmp_arr = (Float *)malloc(sizeof(Float)*line_count); // array to hold flattened weights
 
-  // Read in values to file (straightforward as file has no comment strings and one value per line)
-  while (fgets(line,1000000,fp)!=NULL) {
-   tmp_arr[line_count]=atof(line);
-   line_count++;
-  }
+  // Read in values from file
+  line_count = 0;
+  while (fgets(line,1000000,fp)!=NULL) tmp_arr[line_count++]=atof(line);
 
   // Now reconstruct array using the triangle conditions to pick out the relevant elements
   // note that we don't need to initialize the other elements as they're never used
@@ -255,6 +252,7 @@ Float weight5pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(OR
 Float fivepcf_coupling[(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)];
 
 void load_5pcf_coupling(){
+
   // Load the full coupling matrix up to ell = MAXORDER5 from file
   // This is defined as C_m^Lambda = (-1)^{l1+l2+l3+l4} Sum_{m12} (-1)^{l12-m12} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l4, m4)]
   // Data-type is a 3D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l4} with the (l1,m1), (l2,m2) and (l3,m3) flattened.
@@ -271,14 +269,15 @@ void load_5pcf_coupling(){
      abort();
   }
 
-  int line_count=0; // line counter
-  Float tmp_arr[(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)*(MAXORDER5+1)]; // array to hold flattened array
+  // First count number of lines in file, and allocate memory (straightforward as file has no comment strings and one value per line)
+  int line_count=0;
+  while (fgets(line,1000,fp)!=NULL) line_count++;
+  rewind(fp);
+  Float* tmp_arr = (Float *)malloc(sizeof(Float)*line_count); // array to hold flattened weights
 
-  // Read in values to file (straightforward as file has no comment strings and one value per line)
-  while (fgets(line,1000000,fp)!=NULL) {
-   tmp_arr[line_count]=atof(line);
-   line_count++;
-  }
+  // Read in values from file
+  line_count = 0;
+  while (fgets(line,1000000,fp)!=NULL) tmp_arr[line_count++]=atof(line);
 
   // Now reconstruct array using the triangle conditions to pick out the relevant elements
   // note that we don't need to initialize the other elements as they're never used
@@ -379,14 +378,15 @@ void load_6pcf_coupling(){
      abort();
   }
 
-  int line_count=0; // line counter
-  Float tmp_arr[(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)*(MAXORDER6+1)]; // array to hold flattened array
+  // First count number of lines in file, and allocate memory (straightforward as file has no comment strings and one value per line)
+  int line_count=0;
+  while (fgets(line,1000,fp)!=NULL) line_count++;
+  rewind(fp);
+  Float* tmp_arr = (Float *)malloc(sizeof(Float)*line_count); // array to hold flattened weights
 
-  // Read in values to file (straightforward as file has no comment strings and one value per line)
-  while (fgets(line,10000000,fp)!=NULL) {
-   tmp_arr[line_count]=atof(line);
-   line_count++;
-  }
+  // Read in values from file
+  line_count = 0;
+  while (fgets(line,1000000,fp)!=NULL) tmp_arr[line_count++]=atof(line);
 
   // Now reconstruct array using the triangle conditions to pick out the relevant elements
   // note that we don't need to initialize the other elements as they're never used

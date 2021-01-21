@@ -36,7 +36,7 @@ class NPCF {
     STimer BinTimer5;
 
 // Sizes of 5pcf array
-#define N5PCF (NBIN*(NBIN-1)*(NBIN-2)*(NBIN-3))/24
+#define N5PCF (NBIN*(NBIN-1)*(NBIN-2)*(NBIN-3)/24)
 
     // Array to hold the 5PCF (including only even-parity, and triangle-condition-satisfying bins)
     Float *fivepcf;
@@ -48,7 +48,7 @@ class NPCF {
     STimer BinTimer6;
 
 // Sizes of 5pcf array
-#define N6PCF (NBIN*(NBIN-1)*(NBIN-2)*(NBIN-3)*(NBIN-4))/120
+#define N6PCF (NBIN*(NBIN-1)*(NBIN-2)*(NBIN-3)*(NBIN-4)/120)
 
     // Array to hold the 6PCF (including only even-parity, and triangle-condition-satisfying bins)
     Float *sixpcf;
@@ -176,28 +176,6 @@ class NPCF {
   #ifdef SIXPCF
   for(int x=0;x<N6PCF*nell6;x++) sixpcf[x] += c->sixpcf[x];
   #endif
-    }
-
-    void report_power() {
-      /// Report the 3PCF measurements. Depracated, and only includes 3PCF here.
-
-      // NB: we print zeta_ij[ell] for all j<=i
-      // Old versions printed zeta_ij[ell]/zeta_ij[0] and in a different order
-	for (int i=0, ct=0; i<NBIN; i++) {
-	    for (int j=i+1; j<NBIN; j++,ct++) {
-		if (j==i) printf("Multipole Power %2d %9lld %9.0f\n",
-				j, bincounts[j], binweight[j]);
-		//if (j==i) {
-		//    printf("# Bin auto-power omitted due to uncorrected noise bias\n");
-		//    continue;
-		//}
-		printf("%2d %2d", i, j);
-		for (int l=0; l<=ORDER; l++) {
-		    printf(" %13.6e", threepcf[l*N3PCF+ct]); ///threepcf[i][j][0]);
-		}
-	    printf("\n");
-	    }
-	}
     }
 
     void report_timings() {
@@ -617,7 +595,7 @@ class NPCF {
 
   Float weight1, weight2; // coupling weights
   int tmp_lm1, tmp_lm2, tmp_lm3;
-  Complex alm1w, alm2, alm3, alm2conj, alm3conj; // temporary storage of alm weights
+  Complex alm1w, alm2, alm2conj; // temporary storage of alm weights
   Complex alm1wlist[NBIN], alm2list[NBIN], alm3list2[NBIN]; // arrays to hold intermediate a_lm lists
   Complex alm2conjlist[NBIN], alm3conjlist1[NBIN]; // arrays to hold intermediate a*_lm lists
 
@@ -786,7 +764,7 @@ class NPCF {
   // The odd parity terms could be included if necessary and are purely imaginary
 
   // Iterate over first multipole
-  n=-1;
+  n=0;
   for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
 
      // Iterate over second multipole
@@ -829,10 +807,9 @@ class NPCF {
                   m4 = -m1-m2-m3;
                   if (m4<0) continue; // only need to use m4>=0
                   if (m4>l4) continue; // this violates triangle conditions
-                  n++; // nb: we start from -1 here, so okay to advance this now
 
                   // Look up the relevant weight
-                  weight = weight5pcf[n];
+                  weight = weight5pcf[n++];
                   if (weight==0) continue;
 
                   tmp_lm3 = l3*(l3+1)/2+fabs(m3);
@@ -862,9 +839,9 @@ class NPCF {
                         alm3 = alm3list[k]*alm2;
 
                         // Iterate over final bin and advance the 5PCF array counter
-                        for(int l=k+1; l<NBIN; l++, bin_index++){
+                        for(int l=k+1; l<NBIN; l++){
                             // Add contribution to 5PCF array
-                            fivepcf[bin_index] += (alm3*alm4list[l]).real();
+                            fivepcf[bin_index++] += (alm3*alm4list[l]).real();
 
                             }
                           }
@@ -911,7 +888,7 @@ class NPCF {
   // The odd parity terms could be included if necessary and are purely imaginary
 
   // Iterate over first multipole
-  n=-1;
+  n=0;
   for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
 
      // Iterate over second multipole
@@ -970,10 +947,9 @@ class NPCF {
                           m5 = -m1-m2-m3-m4;
                           if (m5<0) continue; // only need to use m5>=0
                           if (m5>l5) continue; // this violates triangle conditions
-                          n++; // nb: we start from -1 here, so okay to advance this now
 
-                          // Look up the relevant weight
-                          weight = weight6pcf[n];
+                          // Look up the relevant weight and advance array
+                          weight = weight6pcf[n++];
                           if (weight==0) continue;
 
                           tmp_lm4 = l4*(l4+1)/2+fabs(m4);
@@ -1008,9 +984,9 @@ class NPCF {
                                   alm4 = alm4list[l]*alm3;
 
                                   // Iterate over final bin and advance the 6PCF array counter
-                                  for(int m=l+1; m<NBIN; m++, bin_index++){
+                                  for(int m=l+1; m<NBIN; m++){
                                       // Add contribution to 6PCF array
-                                      sixpcf[bin_index] += (alm4*alm5list[m]).real();
+                                      sixpcf[bin_index++] += (alm4*alm5list[m]).real();
                                     }
                                   }
                                 }

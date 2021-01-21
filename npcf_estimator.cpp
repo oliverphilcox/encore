@@ -415,10 +415,6 @@ int main(int argc, char *argv[]) {
     pairs[0].report_pairs();
     OutputTime.Stop();
 
-    // old routine for printing power to terminal
-    //printf("\n# Multipole power\n");
-    //npcf[0].report_power();
-
     // Save the outputs
     npcf[0].save_power(outstr, rmax);
 
