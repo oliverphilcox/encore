@@ -587,142 +587,89 @@ class NPCF {
 
   BinTimer3.Stop();
 
-#ifdef FOURPCF
-  {
-  // COMPUTE 4PCF CONTRIBUTIONS
+  #ifdef FOURPCF
+    {
+    // COMPUTE 4PCF CONTRIBUTIONS
 
-  BinTimer4.Start();
+    BinTimer4.Start();
 
-  Float weight1, weight2; // coupling weights
-  int tmp_lm1, tmp_lm2, tmp_lm3;
-  Complex alm1w, alm2, alm2conj; // temporary storage of alm weights
-  Complex alm1wlist[NBIN], alm2list[NBIN], alm3list2[NBIN]; // arrays to hold intermediate a_lm lists
-  Complex alm2conjlist[NBIN], alm3conjlist1[NBIN]; // arrays to hold intermediate a*_lm lists
+    int n; // indexes weight array
+    int tmp_lm1, tmp_lm2, tmp_lm3, m3; // useful indices
+    Float weight; // coupling weights
+    Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN]; // arrays to hold intermediate a_lm lists
+    Complex alm1w, alm2; // intermediate a_lm values
 
-  // Precompute complex conjugates of all alm
-  Complex almconj[NBIN][NLM];
-  for(int x=0;x<NBIN;x++){
-    for(int l=0, y=0;l<=ORDER;l++){
-      for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+    // Precompute complex conjugates of all alm (for m>=0)
+    Complex almconj[NBIN][NLM];
+    for(int x=0;x<NBIN;x++){
+      for(int l=0, y=0;l<=ORDER;l++){
+        for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+      }
     }
-  }
 
-  // Now iterate over (l1, l2, l3) triplet.
-  // NB: n indexes position in the 4PCF weight array
-  // We only compute terms with even parity i.e. even l1+l2+l3. These are all real.
-  // The odd parity terms could be included if necessary and are purely imaginary
+    // Iterate over (l1, l2, l3) triplet
+    // NB: n indexes position in the 4PCF weight array, and must be carefully set
+    // We only compute terms with even parity i.e. even l1+l2+l3. These are all real.
+    // The odd parity terms could be included if necessary and are purely imaginary
 
-  // Iterate over first multipole
-  for(int l1=0, zeta_index=0, n=0; l1<=ORDER; l1++) {
+    // Iterate over first multipole
+    n=0;
+    for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
 
-      // Iterate over second multipole
-      for(int l2=0; l2<=ORDER; l2++){
+     // Iterate over second multipole
+     for(int l2=0; l2<=ORDER; l2++){
 
-        // Iterate over third multipole, avoiding bins violating triangle condition
-        for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++,zeta_index+=N4PCF){
+       // Iterate over internal multipole, avoiding bins violating triangle condition
+       for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++){
 
-          // Skip any odd multipoles with odd parity
-          if(pow(-1,l1+l2+l3)==-1) continue;
+         // Skip any odd multipoles with odd parity
+         if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
 
-          // Iterate over m1, starting at zero
-          for(int m1=0; m1<=l1; m1++){
+         // Iterate over all m1 (including negative)
+         for(int m1=-l1; m1<=l1; m1++){
 
-            tmp_lm1 = l1*(l1+1)/2+m1;
+           tmp_lm1 = l1*(l1+1)/2+fabs(m1);
 
-            // Create temporary copy of a_l1m1
-            for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
+           // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+           if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_lm1];
+           else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
 
-            // Iterate over m2, starting at zero and update index counter
-            for(int m2=0; m2<=l2; m2++, n++){
+           // Iterate over all m2 (including negative)
+           for(int m2=-l2; m2<=l2; m2++){
+             m3 = -m1-m2;
+             if (m3<0) continue; // only need to use m3>=0
+             if (m3>l3) continue; // this violates triangle conditions
 
-              // Store relevant weights
-              weight1 = weight4pcf1[n];
-              weight2 = weight4pcf2[n]; // this will be zero if triangle / summation conditions are violated
+             // Look up the relevant weight and advance index
+             weight = weight4pcf[n++];
+             if (weight==0) continue;
 
-              // ensure that |m3|<=l3 and skip if not
-              if(abs(m1+m2)>l3) weight1=0;
-              if(abs(m1-m2)>l3) weight2=0;
+             tmp_lm2 = l2*(l2+1)/2+fabs(m2);
+             tmp_lm3 = l3*(l3+1)/2+m3;
 
-              // skip trivial case!
-              if((weight1==0)&&(weight2==0)) continue;
+             // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+             // No conjugates needed for a_l3m3 since we fixed m3>=0!
+             // Note we add the coupling weight factor to a_l3m3
+             if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_lm2];
+             else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_lm2];
+             for(int x=0; x<NBIN; x++) alm3list[x] = alm[x][tmp_lm3]*weight;
 
-              tmp_lm2 = l2*(l2+1)/2+m2;
-              tmp_lm3 = l3*(l3+1)/2;
+              // Now fill up the 4PCF.
+              // Iterate over first radial bin in lower hypertriangle
+              for(int i=0, bin_index=zeta_index; i<NBIN; i++){
 
-              // Create temporary copy of a_l2m2 and a_l3m3 with correct complex conjugation factors
-              // also include the coupling weight
-              for(int x=0;x<NBIN;x++){
-                alm2list[x] = alm[x][tmp_lm2];
-                alm2conjlist[x] = almconj[x][tmp_lm2];
-                alm3conjlist1[x] = almconj[x][tmp_lm3+m1+m2]*weight1;
-                if(m2>=m1) alm3list2[x] = alm[x][tmp_lm3+m2-m1]*weight2;
-                else alm3list2[x] = almconj[x][tmp_lm3+m1-m2]*weight2; // take conjugate if necessary (extra factor of (-1)^{m1-m2} is absorbed into the weights)
-              }
+                alm1w = alm1wlist[i];
 
-              // Now fill up the 4PCF. We have two sets of (l1,l2,l3,m1,m2,m3) to do. The second will only appear if m1>0 and m2>0 (else the weight is set to zero)
-              // It's fastest to check if the weights are non-zero then do one or both of these
-              // Lossy to check non-zero weight in every bin!
+                // Iterate over second bin
+                for(int j=i+1; j<NBIN; j++){
 
-              // Use first set only
-              if((weight1!=0)&&(weight2==0)){
-                // Iterate over first radial bin in lower hypertriangle
-                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
+                  alm2 = alm2list[j]*alm1w;
 
-                  alm1w = alm1wlist[i];
+                  // Iterate over final bin and advance the 4PCF array counter
+                  for(int k=j+1; k<NBIN; k++){
 
-                  // Iterate over second bin
-                  for(int j=i+1; j<NBIN; j++){
-
-                    alm2 = alm2list[j]*alm1w;
-
-                    // Iterate over final bin
-                    for(int k=j+1; k<NBIN; k++, bin_index++){
-
-                      fourpcf[bin_index] += (alm2*alm3conjlist1[k]).real();
-                    }
-                  }
-                }
-              }
-
-              // Use second set only
-              if((weight1==0)&&(weight2!=0)){
-                // Iterate over first radial bin in lower hypertriangle
-                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
-
-                  alm1w = alm1wlist[i];
-
-                  // Iterate over second bin
-                  for(int j=i+1; j<NBIN; j++){
-
-                    alm2conj = alm2conjlist[j]*alm1w;
-
-                    // Iterate over final bin
-                    for(int k=j+1; k<NBIN; k++, bin_index++){
-
-                      fourpcf[bin_index] += (alm3list2[k]*alm2conj).real();
-                    }
-                  }
-                }
-              }
-
-              // Use both sets
-              if((weight1!=0)&&(weight2!=0)){
-                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
-
-                  alm1w = alm1wlist[i];
-
-                  // Iterate over second bin
-                  for(int j=i+1; j<NBIN; j++){
-
-                    alm2 = alm2list[j]*alm1w;
-                    alm2conj = alm2conjlist[j]*alm1w;
-
-                    // Iterate over final bin
-                    for(int k=j+1; k<NBIN; k++, bin_index++){
-
-                      // First combination
-                      fourpcf[bin_index] += (alm2*alm3conjlist1[k]).real() + (alm3list2[k]*alm2conj).real();
-                    }
+                    // Add contribution to 4PCF array
+                    fourpcf[bin_index++] += (alm2*alm3list[k]).real();
                   }
                 }
               }
@@ -732,10 +679,9 @@ class NPCF {
         }
       }
     }
-
   BinTimer4.Stop();
 }
-#endif
+  #endif
 
 
 #ifdef FIVEPCF

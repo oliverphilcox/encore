@@ -3,7 +3,7 @@
 #CXXFLAGS = -g -Wall
 
 CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
-CXXFLAGS = -O3 -DOPENMP -DFOURPCF -DFIVEPCF
+CXXFLAGS = -O3 -DOPENMP -DFOURPCF #-DFIVEPCF
 #-DFOURPCF
 # Add the -DPERIODIC flag to run with periodic boundary conditions
 # Add the -DFOURPCF flag to include the four-point correlator

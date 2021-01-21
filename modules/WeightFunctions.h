@@ -146,19 +146,20 @@ void generate_3pcf_weights(){
 
 #ifdef FOURPCF
 // Create array for 4PCF weights (to be filled at runtime from almnorm and the coupling matrices)
-// We need two sets of matrices to do the summation efficiently
-// Note these size allocations are somewhat overestimated, so will have zeros at the end
-// NB: the second matrix has zeros for m1 and/or m2 = 0
-Float weight4pcf1[NLM*NLM*(ORDER+1)];
-Float weight4pcf2[NLM*NLM*(ORDER+1)];
+// This just uses a single array (to cut down on memory usage)
+// Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
+// We need both odd and even m_1, m_2 to be stored.
+
+Float weight4pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)];
 
 // array for all possible weights up to MAX_ORDER
 Float fourpcf_coupling[(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)];
 
 void load_4pcf_coupling(){
-  // Load the full coupling matrix up to ell = MAXORDER from file
-  // This is defined as C_m^Lambda = (-1)^{l1+l2+l3} ThreeJ[(l1, m1) (l2, m2) (l3, m3)]
-  // Data-type is a 3D array indexing {(l1,m1), (l2,m2), (l3)} with the (l1,m1) and (l2,m2) flattened.
+
+  // Load the full coupling matrix up to ell = MAXORDER4 from file
+  // This is defined as C_m^Lambda = (-1)^{l1+l2+l3} ThreeJ[(l1, m1) (l2, m2) (l3, -m3)]
+  // Data-type is a 3D array indexing {(l1,m1), (l2,m2), l3} with the (l1,m1) and (l2,m2) flattened.
   // It will be trimmed to the relevant l_max at runtime.
 
   char line[100000];
@@ -184,13 +185,13 @@ void load_4pcf_coupling(){
 
   // Now reconstruct array using the triangle conditions to pick out the relevant elements
   // note that we don't need to initialize the other elements as they're never used
-  for(int l1=0,n=0;l1<=MAXORDER;l1++){
+  for(int l1=0, n=0;l1<=MAXORDER;l1++){
     for(int l2=0;l2<=MAXORDER;l2++){
       for(int l3=abs(l1-l2);l3<=fmin(MAXORDER,l1+l2);l3++){
         if(pow(-1,l1+l2+l3)==-1) continue; // skip odd parity
         for(int m1=-l1;m1<=l1;m1++){
-          for(int m2=-l2; m2<=l2; m2++){
-            if(abs(m1+m2)>l3) continue;
+          for(int m2=-l2;m2<=l2;m2++){
+            if(abs(m1+m2)>l3) continue; // m3 condition
             fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3] = tmp_arr[n++];
           }
         }
@@ -200,45 +201,44 @@ void load_4pcf_coupling(){
 };
 
 void generate_4pcf_weights(){
-    // Generate the 4PCF weight array for the specific LMAX used here.
-    // This includes the additional normalization factors
-    // We fill up the one-dimensional weight4pcf1 and weight4pcf2 arrays
+  // Generate the 4PCF weight array for the specific LMAX used here.
+  // This includes the additional normalization factors
+  // We fill up the one-dimensional weight4pcf array
 
-    // We start by initializing them to zero
-    for(int x=0; x<NLM*NLM*(ORDER+1); x++){
-      weight4pcf1[x] = 0.0;
-      weight4pcf2[x] = 0.0;
-    }
+  // We start by initializing all elements to zero
+  for(int x=0; x<int(pow(ORDER+1,5)); x++){
+    weight4pcf[x] = 0.0;
+  }
 
-    // Now load 4PCF weight matrices
-    for(int l1=0, n=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintet (m3 is specified by triangle conditions)
-      for(int l2=0; l2<=ORDER; l2++){
-        for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++){
-          if(pow(-1,l1+l2+l3)==-1) continue; // skip odd parity
-          // We need to sum from m1=0 to l1 here. The second matrix is only non-zero for m1, m2 > 0.
-          for(int m1=0; m1<=l1; m1++){
-            for(int m2=0; m2<=l2; m2++,n++){
-
-              // First set of weights: 2 * coupling[l1,l2,l3,m1,m2,-m1-m2] * (-1)^{m1+m2} * sym(m1, m2), with sym(a,b) = 1/2 if a=b and unity else (see LaTeX for this).
-              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
-              weight4pcf1[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+m1+m2])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
-              if((m1==0)&&(m2==0)) weight4pcf1[n]/=2.;
-
-              // Second set of weights: 2 * coupling[l1,l2,l3,m1,-m2,m2-m1] * (-1)^{m2} (see LaTeX for this).
-              // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
-              // Note this is zero for m1=0 and/or m2=0
-              if((m1>0)&&(m2>0)){
-                weight4pcf2[n] = 2.*pow(-1.,m2)*sqrt(almnorm[l1*(1+l1)/2+m1]*almnorm[l2*(1+l2)/2+m2]*almnorm[l3*(1+l3)/2+int(fabs(m2-m1))])*fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2-m2][l3];
-                if(m2<m1) weight4pcf2[n] *= pow(-1.,m1-m2); // absorbing later factor from complex conjugation for efficiency
-              }
-            }
+  int m3, n=0;
+  // Now load 4PCF weight matrices, only filling values that don't violate triangle conditions
+  for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l3,m1,m2) quintuplet (m3 is specified by triangle conditions)
+    for(int l2=0; l2<=ORDER; l2++){
+      for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++){
+        if(pow(-1,l1+l2+l3)==-1) continue; // skip odd parity combinationss
+        // NB: we sum m_i from -li to li here. m3>=0 however.
+        for(int m1=-l1; m1<=l1; m1++){
+          for(int m2=-l2; m2<=l2; m2++){
+            m3 = -m1-m2;
+            if(m3<0) continue; // only need to use m3>=0
+            if (m3>l3) continue; // this violates triangle conditions
+            // Now add in the weights. This is 2 * coupling[l1, l2, l3, m1, m2, -m1-m2] * (-1)^{m1+m2} * S(m1+m2) with S(M) = 1/2 if M=0 and unity else.
+            // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
+            weight4pcf[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+m3]);
+            weight4pcf[n] *= fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
+            if(m3==0) weight4pcf[n] /= 2;
+            // also add in factors from complex conjugations of m1,m2
+            if(m1<0) weight4pcf[n] *= pow(-1.,m1);
+            if(m2<0) weight4pcf[n] *= pow(-1.,m2);
+            n++;
           }
         }
       }
     }
   }
-
+};
 #endif
+
 
 #ifdef FIVEPCF
 // Create array for 5PCF weights (to be filled at runtime from almnorm and the coupling matrices)
