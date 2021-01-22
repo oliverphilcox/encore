@@ -182,7 +182,7 @@ void sum_power() {
 // ================================ main() =============================
 
 void usage() {
-    fprintf(stderr, "\nUsage for grid_multipoles/grid_multipolesAVX:\n");
+    fprintf(stderr, "\nUsage for encore/encoreAVX:\n");
     fprintf(stderr, "   -in <file>: The input file (space-separated x,y,z,w).  Default sample.dat.\n");
     fprintf(stderr, "   -outstr <outstring>: String to prepend to the output file.  Default sample.\n");
     fprintf(stderr, "   -def: This allows one to accept the defaults without giving other entries.\n");

@@ -19,7 +19,7 @@ CXXFLAGS = -O3 -DOPENMP -DFOURPCF -DFIVEPCF
 AVX = -DAVX
 # Remove this if you don't want AVX support
 
-default: npcf_estimator npcf_estimatorAVX
+default: encore encoreAVX
 
 CMASM.o:
 	$(CC) -DAVXMULTIPOLES generateCartesianMultipolesASM.c
@@ -27,9 +27,9 @@ CMASM.o:
 	rm a.out
 	$(CC) -Wall -c CMASM.c
 
-npcf_estimatorAVX: npcf_estimator.cpp CMASM.o
-	$(CXX) $(CXXFLAGS) $(AVX) npcf_estimator.cpp CMASM.o \
-	-o npcf_estimatorAVX
+encoreAVX: encore.cpp CMASM.o
+	$(CXX) $(CXXFLAGS) $(AVX) encore.cpp CMASM.o \
+	-o encoreAVX
 
 clean:
-	$(RM) npcf_estimator npcf_estimatorAVX CMASM.o
+	$(RM) encore encoreAVX CMASM.o

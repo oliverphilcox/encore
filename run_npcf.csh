@@ -1,7 +1,7 @@
 #!/bin/csh
 
 ##################### DOCUMENTATION #####################
-### Shell script for running the NPCF-Estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
+### Shell script for running the encore NPCF-estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
 #
 # This can be run either from the terminal or as a SLURM script (using the below parameters).
 # The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 3PCF/4PCF/5PCF/6PCF) before this script is run.
@@ -57,9 +57,9 @@ setenv OMP_NUM_THREADS = $SLURM_NPROCS
 
 # Define command to run the C++ code
 if ($useAVX) then
-  set code = ./npcf_estimatorAVX
+  set code = ./encoreAVX
 else
-  set code = ./npcf_estimator
+  set code = ./encore
 endif
 
 set command = "$code -rmax $rmax -ngrid $ngrid  -scale $scale"
