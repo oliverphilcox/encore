@@ -157,7 +157,7 @@ Float fourpcf_coupling[(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)*(MAXORDER+1)][(MA
 
 void load_4pcf_coupling(){
 
-  // Load the full coupling matrix up to ell = MAXORDER4 from file
+  // Load the full coupling matrix up to ell = MAXORDER from file
   // This is defined as C_m^Lambda = (-1)^{l1+l2+l3} ThreeJ[(l1, m1) (l2, m2) (l3, -m3)]
   // Data-type is a 3D array indexing {(l1,m1), (l2,m2), l3} with the (l1,m1) and (l2,m2) flattened.
   // It will be trimmed to the relevant l_max at runtime.
@@ -181,7 +181,7 @@ void load_4pcf_coupling(){
 
   // Read in values from file
   line_count = 0;
-  while (fgets(line,1000000,fp)!=NULL) tmp_arr[line_count++]=atof(line);
+  while (fgets(line,1000,fp)!=NULL) tmp_arr[line_count++]=atof(line);
 
   // Now reconstruct array using the triangle conditions to pick out the relevant elements
   // note that we don't need to initialize the other elements as they're never used
@@ -222,9 +222,9 @@ void generate_4pcf_weights(){
             m3 = -m1-m2;
             if(m3<0) continue; // only need to use m3>=0
             if (m3>l3) continue; // this violates triangle conditions
-            // Now add in the weights. This is 2 * coupling[l1, l2, l3, m1, m2, -m1-m2] * (-1)^{m1+m2} * S(m1+m2) with S(M) = 1/2 if M=0 and unity else.
+            // Now add in the weights. This is 2 * coupling[l1, l2, l3, m1, m2, -m1-m2] S(m1+m2) with S(M) = 1/2 if M=0 and unity else.
             // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3} (which is trivial)
-            weight4pcf[n] = 2.*pow(-1.,m1+m2)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+m3]);
+            weight4pcf[n] = 2.*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+m3]);
             weight4pcf[n] *= fourpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l3];
             if(m3==0) weight4pcf[n] /= 2;
             // also add in factors from complex conjugations of m1,m2
@@ -331,7 +331,7 @@ void generate_5pcf_weights(){
                     if (m4>l4) continue; // this violates triangle conditions
                     // Now add in the weights. This is 2 * coupling[l1, l2, l12, l3, l4, m1, m2, m3, -m1-m2-m3] * (-1)^{m1+m2+m3} * S(m1+m2+m3) with S(M) = 1/2 if M=0 and unity else.
                     // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3+m4} (which is trivial)
-                    weight5pcf[n] = 2.*pow(-1.,m1+m2+m3)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+m4]);
+                    weight5pcf[n] = 2.*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+m4]);
                     weight5pcf[n] *= fivepcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l4];
                     if(m4==0) weight5pcf[n] /= 2;
                     // also add in factors from complex conjugations of m1->m3
@@ -451,7 +451,7 @@ void generate_6pcf_weights(){
                         if (m5>l5) continue; // this violates triangle conditions
                         // Now add in the weights. This is 2 * coupling[l1, l2, l12, l3, l123, l4, l5, m1, m2, m3, m4, -m1-m2-m3-m4] * (-1)^{m1+m2+m3+m4} * S(m1+m2+m3+m4) with S(M) = 1/2 if M=0 and unity else.
                         // We also add in alm normalization factors, including the extra factor of (-1)^{m1+m2+m3+m4} (which is trivial)
-                        weight6pcf[n] = 2.*pow(-1.,m1+m2+m3+m4)*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+abs(m4)]*almnorm[l5*(1+l5)/2+m5]);
+                        weight6pcf[n] = 2.*sqrt(almnorm[l1*(1+l1)/2+abs(m1)]*almnorm[l2*(1+l2)/2+abs(m2)]*almnorm[l3*(1+l3)/2+abs(m3)]*almnorm[l4*(1+l4)/2+abs(m4)]*almnorm[l5*(1+l5)/2+m5]);
                         weight6pcf[n] *= sixpcf_coupling[l1*l1+l1+m1][l2*l2+l2+m2][l12][l3*l3+l3+m3][l123][l4*l4+l4+m4][l5];
                         if(m5==0) weight6pcf[n] /= 2;
                         // also add in factors from complex conjugations of m1->m4

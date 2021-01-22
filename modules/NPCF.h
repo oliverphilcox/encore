@@ -593,9 +593,8 @@ class NPCF {
 
     BinTimer4.Start();
 
-    int n; // indexes weight array
     int tmp_lm1, tmp_lm2, tmp_lm3, m3; // useful indices
-    Float weight; // coupling weights
+    Float weight; // coupling weight
     Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN]; // arrays to hold intermediate a_lm lists
     Complex alm1w, alm2; // intermediate a_lm values
 
@@ -613,14 +612,13 @@ class NPCF {
     // The odd parity terms could be included if necessary and are purely imaginary
 
     // Iterate over first multipole
-    n=0;
-    for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+    for(int l1=0, zeta_index=0, n=0; l1<=ORDER; l1++) {
 
      // Iterate over second multipole
      for(int l2=0; l2<=ORDER; l2++){
 
        // Iterate over internal multipole, avoiding bins violating triangle condition
-       for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++){
+       for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
 
          // Skip any odd multipoles with odd parity
          if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
