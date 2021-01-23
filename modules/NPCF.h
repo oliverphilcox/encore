@@ -558,6 +558,14 @@ class NPCF {
 
   // COMPUTE 3PCF CONTRIBUTIONS
 
+  // Precompute complex conjugates of all alm (for m>=0)
+  Complex almconj[NBIN][NLM];
+  for(int x=0;x<NBIN;x++){
+    for(int l=0, y=0;l<=ORDER;l++){
+      for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+    }
+  }
+
   BinTimer3.Start();
 
 
@@ -579,7 +587,7 @@ class NPCF {
             // indexing isn't super efficient here, but matches that of 4PCF (where it is more important)
       			// Our definition is that the power is (-1)^ell / Sqrt(2ell+1) * Sum_m a_lm[a] * a_lm[b].conj()
       			threepcf[ell*N3PCF+ct] +=
-      			    wp*RealProduct(alm[i][n],alm[j][n])*weight3pcf[n]; //* 4.0 * M_PI / (2*ell+1.0);
+      			    wp*(alm[i][n]*almconj[j][n]).real()*weight3pcf[n]; //* 4.0 * M_PI / (2*ell+1.0);
           }
         }
       }
@@ -593,18 +601,10 @@ class NPCF {
 
     BinTimer4.Start();
 
-    int tmp_lm1, tmp_lm2, tmp_lm3, m3; // useful indices
+    int tmp_l1, tmp_l2, tmp_l3, tmp_lm3, m3; // useful indices
     Float weight; // coupling weight
-    Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN]; // arrays to hold intermediate a_lm lists
+    Complex alm1wlist[NBIN], alm2list[NBIN]; // arrays to hold intermediate a_lm lists
     Complex alm1w, alm2; // intermediate a_lm values
-
-    // Precompute complex conjugates of all alm (for m>=0)
-    Complex almconj[NBIN][NLM];
-    for(int x=0;x<NBIN;x++){
-      for(int l=0, y=0;l<=ORDER;l++){
-        for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
-      }
-    }
 
     // Iterate over (l1, l2, l3) triplet
     // NB: n indexes position in the 4PCF weight array, and must be carefully set
@@ -614,8 +614,12 @@ class NPCF {
     // Iterate over first multipole
     for(int l1=0, zeta_index=0, n=0; l1<=ORDER; l1++) {
 
+      tmp_l1 = l1*(l1+1)/2;
+
      // Iterate over second multipole
      for(int l2=0; l2<=ORDER; l2++){
+
+       tmp_l2 = l2*(l2+1)/2;
 
        // Iterate over internal multipole, avoiding bins violating triangle condition
        for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
@@ -623,34 +627,31 @@ class NPCF {
          // Skip any odd multipoles with odd parity
          if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
 
+        tmp_l3 = l3*(l3+1)/2;
+
          // Iterate over all m1 (including negative)
          for(int m1=-l1; m1<=l1; m1++){
 
-           tmp_lm1 = l1*(l1+1)/2+fabs(m1);
-
            // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-           if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_lm1];
-           else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
+           if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
+           else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
 
            // Iterate over all m2 (including negative)
            for(int m2=-l2; m2<=l2; m2++){
              m3 = -m1-m2;
              if (m3<0) continue; // only need to use m3>=0
              if (m3>l3) continue; // this violates triangle conditions
+             tmp_lm3 = tmp_l3+m3;
 
              // Look up the relevant weight and advance index
              weight = weight4pcf[n++];
              if (weight==0) continue;
 
-             tmp_lm2 = l2*(l2+1)/2+fabs(m2);
-             tmp_lm3 = l3*(l3+1)/2+m3;
-
              // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
              // No conjugates needed for a_l3m3 since we fixed m3>=0!
              // Note we add the coupling weight factor to a_l3m3
-             if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_lm2];
-             else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_lm2];
-             for(int x=0; x<NBIN; x++) alm3list[x] = alm[x][tmp_lm3]*weight;
+             if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
+             else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
 
               // Now fill up the 4PCF.
               // Iterate over first radial bin in lower hypertriangle
@@ -667,7 +668,7 @@ class NPCF {
                   for(int k=j+1; k<NBIN; k++){
 
                     // Add contribution to 4PCF array
-                    fourpcf[bin_index++] += (alm2*alm3list[k]).real();
+                    fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).real();
                   }
                 }
               }
@@ -689,18 +690,10 @@ class NPCF {
   BinTimer5.Start();
 
   int n; // indexes weight array
-  int tmp_lm1, tmp_lm2, tmp_lm3, tmp_lm4, m4; // useful indices
+  int tmp_l1, tmp_l2, tmp_l3, tmp_l4, tmp_lm4, m4; // useful indices
   Float weight; // coupling weights
-  Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN], alm4list[NBIN]; // arrays to hold intermediate a_lm lists
+  Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN]; // arrays to hold intermediate a_lm lists
   Complex alm1w, alm2, alm3; // intermediate a_lm values
-
-  // Precompute complex conjugates of all alm (for m>=0)
-  Complex almconj[NBIN][NLM];
-  for(int x=0;x<NBIN;x++){
-    for(int l=0, y=0;l<=ORDER;l++){
-      for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
-    }
-  }
 
   // Iterate over (l1, l2, (l12), l3, l4) quintuplet
   // NB: n indexes position in the 5PCF weight array, and must be carefully set
@@ -711,8 +704,12 @@ class NPCF {
   n=0;
   for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
 
+     tmp_l1 = l1*(l1+1)/2;
+
      // Iterate over second multipole
      for(int l2=0; l2<=ORDER; l2++){
+
+       tmp_l2 = l2*(l2+1)/2;
 
        // Iterate over internal multipole, avoiding bins violating triangle condition
        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2); l12++){
@@ -720,30 +717,30 @@ class NPCF {
          // Iterate over third multipole
          for(int l3=0; l3<=ORDER; l3++){
 
+           tmp_l3 = l3*(l3+1)/2;
+
            // Iterate over fourth multipole, avoiding bins violating triangle condition
            for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
 
            // Skip any odd multipoles with odd parity
            if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
 
+            tmp_l4 = l4*(l4+1)/2;
+
              // Iterate over all m1 (including negative)
              for(int m1=-l1; m1<=l1; m1++){
 
-               tmp_lm1 = l1*(l1+1)/2+fabs(m1);
-
                // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-               if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_lm1];
-               else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
+               if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
+               else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
 
                // Iterate over all m2 (including negative)
                for(int m2=-l2; m2<=l2; m2++){
                  if(abs(m1+m2)>l12) continue; // m12 condition
 
-                 tmp_lm2 = l2*(l2+1)/2+fabs(m2);
-
                  // Create temporary copy of a_l2m2, taking conjugate if necessary
-                 if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_lm2];
-                 else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_lm2];
+                 if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
+                 else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
 
                  // Iterate over m3 (including negative)
                 for(int m3=-l3; m3<=l3; m3++){
@@ -756,15 +753,13 @@ class NPCF {
                   weight = weight5pcf[n++];
                   if (weight==0) continue;
 
-                  tmp_lm3 = l3*(l3+1)/2+fabs(m3);
-                  tmp_lm4 = l4*(l4+1)/2+m4;
+                  tmp_lm4 = tmp_l4+m4;
 
                   // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
                   // No conjugates needed for a_l4m4 since we fixed m4>=0!
                   // Note we add the coupling weight factor to a_l4m4
-                  if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_lm3];
-                  else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_lm3];
-                  for(int x=0; x<NBIN; x++) alm4list[x] = alm[x][tmp_lm4]*weight;
+                  if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_l3-m3];
+                  else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_l3+m3];
 
                   // Now fill up the 5PCF.
                   // Iterate over first radial bin in lower hypertriangle
@@ -785,7 +780,7 @@ class NPCF {
                         // Iterate over final bin and advance the 5PCF array counter
                         for(int l=k+1; l<NBIN; l++){
                             // Add contribution to 5PCF array
-                            fivepcf[bin_index++] += (alm3*alm4list[l]).real();
+                            fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).real();
 
                             }
                           }
@@ -813,18 +808,10 @@ class NPCF {
   BinTimer6.Start();
 
   int n; // indexes weight array
-  int tmp_lm1, tmp_lm2, tmp_lm3, tmp_lm4, tmp_lm5, m5; // useful indices
+  int tmp_l1, tmp_l2, tmp_l3, tmp_l4, tmp_l5, tmp_lm5, m5; // useful indices
   Float weight; // coupling weights
-  Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN], alm4list[NBIN], alm5list[NBIN]; // arrays to hold intermediate a_lm lists
+  Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN], alm4list[NBIN]; // arrays to hold intermediate a_lm lists
   Complex alm1w, alm2, alm3, alm4; // intermediate a_lm values
-
-  // Precompute complex conjugates of all alm (for m>=0)
-  Complex almconj[NBIN][NLM];
-  for(int x=0;x<NBIN;x++){
-    for(int l=0, y=0;l<=ORDER;l++){
-      for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
-    }
-  }
 
   // Iterate over (l1, l2, (l12), l3, (l123), l4, l5) septuplet
   // NB: n indexes position in the 6PCF weight array, and must be carefully set
@@ -834,21 +821,25 @@ class NPCF {
   // Iterate over first multipole
   n=0;
   for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+     tmp_l1 = l1*(l1+1)/2;
 
      // Iterate over second multipole
      for(int l2=0; l2<=ORDER; l2++){
+       tmp_l2 = l2*(l2+1)/2;
 
        // Iterate over first internal multipole, avoiding bins violating triangle condition
        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2); l12++){
 
          // Iterate over third multipole
          for(int l3=0; l3<=ORDER; l3++){
+           tmp_l3 = l3*(l3+1)/2;
 
            // Iterate over second internal multipole, avoiding bins violating triangle condition
            for(int l123=fabs(l12-l3);l123<=fmin(ORDER,l12+l3); l123++){
 
              // Iterate over fourth multipole, avoiding bins violating triangle condition
              for(int l4=0; l4<=ORDER; l4++){
+               tmp_l4 = l4*(l4+1)/2;
 
                // Iterate over fifth multipole, avoiding bins violating triangle condition
                for(int l5=fabs(l123-l4); l5<=fmin(ORDER,l123+l4); l5++, zeta_index+=N6PCF){
@@ -856,34 +847,30 @@ class NPCF {
                  // Skip any odd multipoles with odd parity
                  if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
 
+                   tmp_l5 = l5*(l5+1)/2;
+
                    // Iterate over all m1 (including negative)
                    for(int m1=-l1; m1<=l1; m1++){
 
-                     tmp_lm1 = l1*(l1+1)/2+fabs(m1);
-
                      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-                     if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_lm1];
-                     else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_lm1];
+                     if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
+                     else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
 
                      // Iterate over all m2 (including negative)
                      for(int m2=-l2; m2<=l2; m2++){
                        if(abs(m1+m2)>l12) continue; // m12 condition
 
-                       tmp_lm2 = l2*(l2+1)/2+fabs(m2);
-
                        // Create temporary copy of a_l2m2, taking conjugate if necessary
-                       if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_lm2];
-                       else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_lm2];
+                       if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
+                       else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
 
                        // Iterate over m3 (including negative)
                       for(int m3=-l3; m3<=l3; m3++){
                         if(abs(m1+m2+m3)>l123) continue;
 
-                        tmp_lm3 = l3*(l3+1)/2+fabs(m3);
-
                         // Create temporary copy of a_l3m3, taking conjugate if necessary
-                        if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_lm3];
-                        else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_lm3];
+                        if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_l3-m3];
+                        else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_l3+m3];
 
                         // Iterate over m4 (including negative)
                        for(int m4=-l4; m4<=l4; m4++){
@@ -896,15 +883,13 @@ class NPCF {
                           weight = weight6pcf[n++];
                           if (weight==0) continue;
 
-                          tmp_lm4 = l4*(l4+1)/2+fabs(m4);
-                          tmp_lm5 = l5*(l5+1)/2+m5;
+                          tmp_lm5 = tmp_l5+m5;
 
                           // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
                           // No conjugates needed for a_l5m5 since we fixed m5>=0!
                           // Note we add the coupling weight factor to a_l5m5
-                          if (m4<0) for(int x=0;x<NBIN;x++) alm4list[x] = almconj[x][tmp_lm4];
-                          else for(int x=0;x<NBIN;x++) alm4list[x] = alm[x][tmp_lm4];
-                          for(int x=0; x<NBIN; x++) alm5list[x] = alm[x][tmp_lm5]*weight;
+                          if (m4<0) for(int x=0;x<NBIN;x++) alm4list[x] = almconj[x][tmp_l4-m4];
+                          else for(int x=0;x<NBIN;x++) alm4list[x] = alm[x][tmp_l4+m4];
 
                           // Now fill up the 6PCF.
                           // Iterate over first radial bin in lower hypertriangle
@@ -930,7 +915,7 @@ class NPCF {
                                   // Iterate over final bin and advance the 6PCF array counter
                                   for(int m=l+1; m<NBIN; m++){
                                       // Add contribution to 6PCF array
-                                      sixpcf[bin_index++] += (alm4*alm5list[m]).real();
+                                      sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
                                     }
                                   }
                                 }
