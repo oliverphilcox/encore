@@ -21,7 +21,7 @@
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.
-#define ORDER 2
+#define ORDER 5
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!
@@ -106,13 +106,42 @@ class Pairs {
 	    xi2[i] += p->xi2[i];
 	}
     }
+  //
+  //   void report_pairs() {
+  //   for (int j=0; j<NBIN; j++) {
+	//     printf("Pairs %2d %9.0f %9.0f\n",
+	// 		j, xi0[j], xi2[j]);
+	// }
+  //   }
 
-    void report_pairs() {
-    for (int j=0; j<NBIN; j++) {
-	    printf("Pairs %2d %9.0f %9.0f\n",
-			j, xi0[j], xi2[j]);
-	}
-    }
+    void save_pairs(char* out_string, Float rmax) {
+      // Print the output isotropic 2PCF counts to file
+
+      // First create output files
+       char out_name[1000];
+        snprintf(out_name, sizeof out_name, "output/%s_2pcf.txt", out_string);
+       FILE * OutFile = fopen(out_name,"w");
+
+       // Print some useful information
+       fprintf(OutFile,"## Bins: %d\n",NBIN);
+       fprintf(OutFile,"## Maximum Radius = %.2e\n", rmax);
+       fprintf(OutFile,"## Format: Row 1 = radial bin 1, Row 2 = xi^a\n");
+
+       // First print the indices of the first radial bin
+       for(int i=0;i<NBIN;i++) fprintf(OutFile,"%2d\t",i);
+       fprintf(OutFile," \n");
+
+       // Now print the 2PCF, ell-by-ell.
+       for (int i=0; i<NBIN; i++) fprintf(OutFile,"%le\t",xi0[i]);
+       fprintf(OutFile,"\n");
+
+       fflush(NULL);
+
+       // Close open files
+       fclose(OutFile);
+
+       printf("\n2PCF Output saved to %s\n",out_name);
+}
 };
 
 Pairs pairs[MAXTHREAD];
@@ -411,12 +440,14 @@ int main(int argc, char *argv[]) {
     Epilogue.Start();
     OutputTime.Start();
     sum_power();
-    printf("\n# Binned weighted pair counts, monopole and quadrupole\n");
-    pairs[0].report_pairs();
     OutputTime.Stop();
 
+    //printf("\n# Binned weighted pair counts, monopole and quadrupole\n");
+    //pairs[0].report_pairs();
+
     // Save the outputs
-    npcf[0].save_power(outstr, rmax);
+    pairs[0].save_pairs(outstr, rmax);
+npcf[0].save_power(outstr, rmax);
 
     IOTime.Start();
     if (smsave!=NULL) {

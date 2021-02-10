@@ -4,25 +4,26 @@
 ### Shell script for running the encore NPCF-estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
 #
 # This can be run either from the terminal or as a SLURM script (using the below parameters).
-# The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 3PCF/4PCF/5PCF/6PCF) before this script is run.
+# The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 4PCF/5PCF/6PCF) before this script is run. The isotropic 2PCF and 3PCF will always be computed.
 # The script should be run from the code directory
 # This is adapted from a similar script by Daniel Eisenstein.
-# In the input directory, we expect compressed .gz files labelled {root}.data.gz, {root}.ran.{IJ}.gz
+# In the input directory, we expect compressed .gz files labelled {root}.data.gz, {ranroot}.ran.{IJ}.gz
 # where {root} is a user-set name, and {IJ} indexes the random catalogs, from 0 - 31.
 # We expect the summed weights to be the same for the data and each random catalog, but the random weights should be negative
 # This script will compute the D^N counts, the (D-R)^N counts for 32 random subsets, and the R^N counts for one subset (should be sufficient).
 # The output will be a set of .zeta_{N}pcf.txt files in the specified directory as well as a .tgz compressed directory of other intermediary outputs
-# Note that performing edge-correction is slow for the 5PCF and 6PCF since 9j symbols must be computed.
+# It is important to check the errlog file in the output directory to make sure all went well!
+# Note that performing edge-correction is slow for the 5PCF and 6PCF since 9j symbols must be computed. Furthermore, the output multipoles are only accurate up to (ORDER-1), i.e. to compute an accurate edge-corrected spectrum with ell=5, we must compute (D-R) and R counts up to ell=6.
 #
 # NB: If needed, we could access a task ID by SLURM_ARRAY_TASK_ID, if we're running with SLURM
 ##########################################################
 
 #SBATCH -n 16 # cpus
 #SBATCH -N 1 # tasks
-#SBATCH -t 0-08:00 # time
-#SBATCH -o /home/ophilcox/out/npcf_run.%A.out         # File to which STDOUT will be written (make sure the directory exists!)
-#SBATCH -e /home/ophilcox/out/npcf_run.%A.err         # File to which STDERR will be written
-#SBATCH --mail-type=END,FAIL         # Type of email notification
+#SBATCH -t 0-07:59 # time
+#SBATCH -o /home/ophilcox/out/npcf6_run.%A.out         # File to which STDOUT will be written (make sure the directory exists!)
+#SBATCH -e /home/ophilcox/out/npcf6_run.%A.err         # File to which STDERR will be written
+#SBATCH --mail-type=END,FAIL        # Type of email notification
 #SBATCH --mail-user=ophilcox@princeton.edu # Email to which notifications will be sent
 
 ##################### INPUT PARAMETERS ###################
@@ -35,13 +36,14 @@ set rmax = 170 # maximum radius in Mpc/h
 # Other inputs
 set scale = 1 # rescaling for co-ordinates
 set ngrid = 50 # grid-size for accelerating pair count
+set boxsize = 1000 # only used if periodic=1
 
 # File directories
 set root = boss_cmass # root for data filenames
 set ranroot = boss_cmass # root for random filenames
 set in = /projects/QUIJOTE/Oliver/npcf/data # input directory (see above for required contents)
-set out = /projects/QUIJOTE/Oliver/npcf/output_6pcf # output file directory
-set tmp = /scratch/gpfs/ophilcox/npcf_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
+set out = /projects/QUIJOTE/Oliver/npcf/boss_6pcf # output file directory
+set tmp = /scratch/gpfs/ophilcox/npcf6_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
 
 # Load some python environment with numpy and sympy installed
 module load anaconda3
@@ -53,16 +55,20 @@ conda activate ptenv
 #set OMP_NUM_THREADS = 4
 
 # Set number of threads (with SLURM)
-setenv OMP_NUM_THREADS = $SLURM_NPROCS
+setenv OMP_NUM_THREADS $SLURM_NPROCS
 
 # Define command to run the C++ code
 if ($useAVX) then
-  set code = ./encoreAVX
+  set code = ./encoreAVX6
 else
   set code = ./encore
 endif
 
-set command = "$code -rmax $rmax -ngrid $ngrid  -scale $scale"
+if ($periodic) then
+  set command = "$code -rmax $rmax -ngrid $ngrid  -scale $scale -boxsize $boxsize"
+else
+  set command = "$code -rmax $rmax -ngrid $ngrid -scale $scale"
+endif
 
 # Create a temporary directory for saving
 /bin/rm -rf $tmp       # Delete, just in case we have crud from a previous run.
@@ -91,6 +97,10 @@ set multfile = $tmp/$root.mult
 
 # Extra the data into our temporary ramdisk
 gunzip -c $in/$root.data.gz > $tmp/$root.data
+
+# Find number of galaxies (needed later for R^N periodic counts)
+set Ngal = `cat $tmp/$root.data | wc -l`
+set Ngal = `expr $Ngal + 1`
 
 #### Compute D^N NPCF counts
 # Note that we save the a_lm multipoles from the data here
@@ -143,8 +153,8 @@ end    # foreach D-R loop
 ### Now need to combine the files to get the full NPCF estimate
 # We do this in Python, and perform edge-correction unless the periodic flag is not set
 if ($periodic) then
-  echo Combining files together without performing edge-corrections
-  python combine_files_periodic.py $tmpout/$root >>& $errlog
+  echo Combining files together without performing edge-corrections (using analytic R^N counts)
+  python combine_files_periodic.py $tmpout/$root $Ngal $boxsize $rmax >>& $errlog
 else
   echo Combining files together and performing edge-corrections
   python combine_files.py $tmpout/$root >>& $errlog $OMP_NUM_THREADS

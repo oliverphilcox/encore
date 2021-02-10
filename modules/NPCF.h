@@ -520,7 +520,7 @@ class NPCF {
 
      }
 
-    inline void add_to_power(Multipoles *mult, Float wp) {
+  inline void add_to_power(Multipoles *mult, Float wp) {
       // wp is the primary galaxy weight
 	// Now use all of the binned multipoles to compute the
 	// spherical harmonics in all bins and then the cross-powers.
@@ -679,11 +679,10 @@ class NPCF {
       }
     }
   BinTimer4.Stop();
-}
+  }
   #endif
 
-
-#ifdef FIVEPCF
+  #ifdef FIVEPCF
   {
   // COMPUTE 5PCF CONTRIBUTIONS
 
