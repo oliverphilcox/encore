@@ -3,8 +3,8 @@
 #CXXFLAGS = -g -Wall
 
 # FOR LINUX MACHINES WITH g++
-# CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
-# CXXFLAGS = -O3 -DOPENMP -DFOURPCF
+#CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
+#CXXFLAGS = -O3 -DOPENMP -DFOURPCF
 
 # FOR LINUX MACHINES WITH INTEL
 # here optimized for machines with AVX512 registers
@@ -13,8 +13,7 @@ CXXFLAGS= -O2 -xCORE-AVX512 -qopt-zmm-usage=high -qopenmp -g
 # extra code for parallelization reports
 #-qopt-report=5 -qopt-report-phase=vec -inline-level=0 -qopt-report-filter="NPCF.h,598-683" -qopt-report-file=$@.optrpt
 
-MODES = -DOPENMP -DFOURPCF 
-# -DPERIODIC
+MODES = -DOPENMP -DFOURPCF
 # Add the -DPERIODIC flag to run with periodic boundary conditions
 # Add the -DFOURPCF flag to include the four-point correlator
 # Add the -DFIVEPCF flag to include the five-point correlator

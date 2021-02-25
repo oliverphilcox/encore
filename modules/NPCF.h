@@ -103,10 +103,11 @@ class NPCF {
 
     // First work out how long the 5PCF array should be, taking into account triangle conditions
     // note we have odd and even parity here (could remove odd)
+    // we allow intermediate momenta to have any ell allowed by the triangle conditions (i.e. we don't restrict l12<=ORDER)
     nell5=0;
     for(int l1=0;l1<=ORDER;l1++){
       for(int l2=0;l2<=ORDER;l2++){
-        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+        for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
           for(int l3=0;l3<=ORDER;l3++){
             for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) nell5++;
           }
@@ -124,12 +125,13 @@ class NPCF {
 #ifdef SIXPCF
 
     // First work out how long the 6PCF array should be, taking into account triangle conditions
+    // we allow intermediate momenta to have any ell allowed by the triangle conditions (i.e. we don't restrict l12,l123<=ORDER)
     nell6=0;
     for(int l1=0;l1<=ORDER;l1++){
       for(int l2=0;l2<=ORDER;l2++){
-        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+        for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
           for(int l3=0;l3<=ORDER;l3++){
-            for(int l123=fabs(l12-l3);l123<=fmin(ORDER,l12+l3);l123++){
+            for(int l123=fabs(l12-l3);l123<=l12+l3;l123++){
               for(int l4=0;l4<=ORDER;l4++){
                   for(int l5=fabs(l123-l4);l5<=fmin(ORDER,l123+l4);l5++) nell6++;
               }
@@ -385,7 +387,7 @@ class NPCF {
         // Now print the 5PCF, ell-by-ell.
         for(int l1=0,l_index=0;l1<=ORDER;l1++){
           for(int l2=0;l2<=ORDER;l2++){
-            for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+            for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
               for(int l3=0;l3<=ORDER;l3++){
                 for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++,l_index++){
                   if(pow(-1.,l1+l2+l3+l4)==-1) continue; // skip odd parity and triangle violating bins
@@ -497,9 +499,9 @@ class NPCF {
         // Now print the 6PCF, ell-by-ell.
         for(int l1=0,l_index=0;l1<=ORDER;l1++){
           for(int l2=0;l2<=ORDER;l2++){
-            for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+            for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
               for(int l3=0;l3<=ORDER;l3++){
-                for(int l123=fabs(l12-l3);l123<=fmin(ORDER,l12+l3);l123++){
+                for(int l123=fabs(l12-l3);l123<=l12+l3;l123++){
                   for(int l4=0;l4<=ORDER;l4++){
                     for(int l5=fabs(l123-l4);l5<=fmin(ORDER,l123+l4);l5++,l_index++){
                       if(pow(-1.,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity and triangle violating bins
@@ -715,7 +717,8 @@ class NPCF {
        tmp_l2 = l2*(l2+1)/2;
 
        // Iterate over internal multipole, avoiding bins violating triangle condition
-       for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2); l12++){
+       // but allowing for any allowed internal momenta
+       for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
 
          // Iterate over third multipole
          for(int l3=0; l3<=ORDER; l3++){
@@ -831,14 +834,16 @@ class NPCF {
        tmp_l2 = l2*(l2+1)/2;
 
        // Iterate over first internal multipole, avoiding bins violating triangle condition
-       for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2); l12++){
+       // NB: we allow this to take any value allowed by the 3j conditions, not just <= ORDER
+       for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
 
          // Iterate over third multipole
          for(int l3=0; l3<=ORDER; l3++){
            tmp_l3 = l3*(l3+1)/2;
 
            // Iterate over second internal multipole, avoiding bins violating triangle condition
-           for(int l123=fabs(l12-l3);l123<=fmin(ORDER,l12+l3); l123++){
+           // NB: we allow this to take any value allowed by the 3j conditions, not just <= ORDER
+           for(int l123=fabs(l12-l3);l123<=l12+l3; l123++){
 
              // Iterate over fourth multipole, avoiding bins violating triangle condition
              for(int l4=0; l4<=ORDER; l4++){

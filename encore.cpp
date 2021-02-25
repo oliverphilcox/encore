@@ -20,7 +20,7 @@
 #define NBIN 20
 
 // ORDER is the order of the Ylm we'll compute.
-// This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.
+// This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 5 for 5PCF, or 3 for 6PCF.
 #define ORDER 5
 
 // MAXTHREAD is the maximum number of allowed threads.
@@ -227,7 +227,7 @@ void usage() {
     fprintf(stderr, "             Recommend having several grid cells per rmax.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Two other important parameters can only be set during compilations:\n");
-    fprintf(stderr, "   ORDER: The multipole order being computed.\n");
+    fprintf(stderr, "   ORDER: The maximum ell for primary angular momenta.\n");
     fprintf(stderr, "   NBIN:  The number of radial bins.\n");
     fprintf(stderr, "Similarly, the radial bin spacing (currently linear) is hard-coded.\n");
     fprintf(stderr, "\n");
@@ -339,7 +339,12 @@ int main(int argc, char *argv[]) {
     if (gridsize<1) printf("#\n# WARNING: grid appears inefficiently coarse\n#\n");
     printf("Bins = %d\n", NBIN);
     printf("Order = %d\n", ORDER);
+
+// Print which N-points are used and check ell-max
     assert(ORDER<=MAXORDER);   // Actually, this will run, but it would give silent zeros.
+    #if ORDER>MAXORDER
+      #error "ell-max (ORDER) exceeds maximum value for N<=4!"
+    #endif
   #ifdef FOURPCF
     printf("4PCF: Yes\n");
   #else
@@ -347,12 +352,18 @@ int main(int argc, char *argv[]) {
   #endif
   #ifdef FIVEPCF
     assert(ORDER<=MAXORDER5);
+    #if ORDER>MAXORDER5
+      #error "ell-max (ORDER) exceeds maximum value for N=5!"
+    #endif
     printf("5PCF: Yes\n");
   #else
     printf("5PCF: No\n");
   #endif
   #ifdef SIXPCF
     assert(ORDER<=MAXORDER6);
+    #if ORDER>MAXORDER6
+      #error "ell-max (ORDER) exceeds maximum value for N=6!"
+    #endif
     printf("6PCF: Yes\n");
   #else
     printf("6PCF: No\n");

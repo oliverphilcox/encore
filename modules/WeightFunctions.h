@@ -150,7 +150,7 @@ void generate_3pcf_weights(){
 // Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
 // We need both odd and even m_1, m_2 to be stored.
 
-Float weight4pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)];
+Float *weight4pcf;
 
 // array for all possible weights up to MAX_ORDER
 Float fourpcf_coupling[(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)*(MAXORDER+1)][(MAXORDER+1)];
@@ -161,6 +161,9 @@ void load_4pcf_coupling(){
   // This is defined as C_m^Lambda = (-1)^{l1+l2+l3} ThreeJ[(l1, m1) (l2, m2) (l3, -m3)]
   // Data-type is a 3D array indexing {(l1,m1), (l2,m2), l3} with the (l1,m1) and (l2,m2) flattened.
   // It will be trimmed to the relevant l_max at runtime.
+
+  // Allocate memory
+  weight4pcf = (Float *)malloc(sizeof(Float)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1));
 
   char line[100000];
   FILE *fp;
@@ -245,11 +248,12 @@ void generate_4pcf_weights(){
 // These are of slightly different format to the 4PCF matrices, using just a single array (to cut down on memory usage)
 // Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
 // Notably they need both odd and even m_1, m_2, m_3 to be stored.
+// We note that intermediate momenta can go up to 2*ell_max by 3j conditions
 
-Float weight5pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)];
+Float *weight5pcf;
 
 // array for all possible weights up to MAX_ORDER
-Float fivepcf_coupling[(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)];
+Float fivepcf_coupling[(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(2*MAXORDER5+1)][(MAXORDER5+1)*(MAXORDER5+1)][(MAXORDER5+1)];
 
 void load_5pcf_coupling(){
 
@@ -257,6 +261,9 @@ void load_5pcf_coupling(){
   // This is defined as C_m^Lambda = (-1)^{l1+l2+l3+l4} Sum_{m12} (-1)^{l12-m12} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l4, m4)]
   // Data-type is a 3D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l4} with the (l1,m1), (l2,m2) and (l3,m3) flattened.
   // It will be trimmed to the relevant l_max at runtime.
+
+  // Assign memory to array
+  weight5pcf = (Float *)malloc(sizeof(Float)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1));
 
   char line[100000];
   FILE *fp;
@@ -283,7 +290,7 @@ void load_5pcf_coupling(){
   // note that we don't need to initialize the other elements as they're never used
   for(int l1=0, n=0;l1<=MAXORDER5;l1++){
     for(int l2=0;l2<=MAXORDER5;l2++){
-      for(int l12=abs(l1-l2);l12<=fmin(MAXORDER5,l1+l2);l12++){
+      for(int l12=abs(l1-l2);l12<=l1+l2;l12++){ // allow any l12!
         for(int l3=0;l3<=MAXORDER5;l3++){
           for(int l4=abs(l12-l3);l4<=fmin(MAXORDER5,l12+l3);l4++){
             if(pow(-1,l1+l2+l3+l4)==-1) continue; // skip odd parity
@@ -309,7 +316,7 @@ void generate_5pcf_weights(){
     // We fill up the one-dimensional weight5pcf array
 
     // We start by initializing all elements to zero
-    for(int x=0; x<int(pow(ORDER+1,8)); x++){
+    for(int x=0; x<int(pow(ORDER+1,7)*(2*ORDER+1)); x++){
       weight5pcf[x] = 0.0;
     }
 
@@ -317,7 +324,7 @@ void generate_5pcf_weights(){
     // Now load 5PCF weight matrices, only filling values that don't violate triangle conditions
     for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l12,l3,l4,m1,m2,m3) octuplet (m4 is specified by triangle conditions)
       for(int l2=0; l2<=ORDER; l2++){
-        for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+        for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){ // allow any ell12!
           for(int l3=0; l3<=ORDER; l3++){
             for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++){
               if(pow(-1,l1+l2+l3+l4)==-1) continue; // skip odd parity combinationss
@@ -356,16 +363,19 @@ void generate_5pcf_weights(){
 // These are of the same form as the 5PCF matrices, and store both odd and even m1, m2, m3, m4.
 // Note these size allocations are somewhat overestimated, since we drop any multipoles disallowed by the triangle conditions
 
-Float weight6pcf[(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)];
+Float *weight6pcf;
 
 // array for all possible weights up to MAX_ORDER
-Float sixpcf_coupling[(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)];
+Float sixpcf_coupling[(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(2*MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(2*MAXORDER6+1)][(MAXORDER6+1)*(MAXORDER6+1)][(MAXORDER6+1)];
 
 void load_6pcf_coupling(){
   // Load the full coupling matrix up to ell = MAXORDER6 from file
   // This is defined as C_m^Lambda = (-1)^{l1+l2+l3+l4+l5} Sum_{m12, m123} (-1)^{l12-m12+l123-m123} ThreeJ[(l1, m1) (l2, m2) (l12, -m12)]ThreeJ[(l12, m12) (l3, m3) (l123, -m123)]ThreeJ[(l123, m123) (l4, m4) (l5, m5)]
   // Data-type is a 5D array indexing {(l1,m1), (l2,m2), l12, (l3,m3), l123, (l4, m4), l5} with the (l_i,m_i) sections flattened.
   // It will be trimmed to the relevant l_max at runtime.
+
+  // Assign memory to array
+  weight6pcf = (Float *)malloc(sizeof(Float)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1));
 
   char line[100000];
   FILE *fp;
@@ -392,9 +402,9 @@ void load_6pcf_coupling(){
   // note that we don't need to initialize the other elements as they're never used
   for(int l1=0,n=0;l1<=MAXORDER6;l1++){
     for(int l2=0;l2<=MAXORDER6;l2++){
-      for(int l12=abs(l1-l2);l12<=fmin(MAXORDER6,l1+l2);l12++){
+      for(int l12=abs(l1-l2);l12<=l1+l2;l12++){ // no ell-max conditions here!
         for(int l3=0;l3<=MAXORDER6;l3++){
-          for(int l123=abs(l12-l3);l123<=fmin(MAXORDER6,l12+l3);l123++){
+          for(int l123=abs(l12-l3);l123<=l12+l3;l123++){ // no ell-max conditions here!
             for(int l4=0;l4<=MAXORDER6;l4++){
               for(int l5=abs(l123-l4);l5<=fmin(MAXORDER6,l123+l4);l5++){
                 if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity
@@ -425,7 +435,7 @@ void generate_6pcf_weights(){
   // We fill up the one-dimensional weight5pcf array
 
   // We start by initializing them to zero
-  for(int x=0; x<int(pow(ORDER+1,11)); x++){
+  for(int x=0; x<int(pow(ORDER+1,9)*(2*ORDER+1)*(2*ORDER+1)); x++){
     weight6pcf[x] = 0.0;
   }
 
@@ -433,9 +443,9 @@ void generate_6pcf_weights(){
   // Now load 6PCF weight matrices, only filling values that don't violate triangle conditions
   for(int l1=0; l1<=ORDER; l1++){ // n indexes the (l1,l2,l12,l3,123,l4,l5,m1,m2,m3,m4) undecuplet (m5 is specified by triangle conditions)
     for(int l2=0; l2<=ORDER; l2++){
-      for(int l12=fabs(l1-l2);l12<=fmin(ORDER,l1+l2);l12++){
+      for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){ // no ell-max conditions here!
         for(int l3=0; l3<=ORDER; l3++){
-          for(int l123=fabs(l12-l3);l123<=fmin(ORDER,l12+l3);l123++){
+          for(int l123=fabs(l12-l3);l123<=l12+l3;l123++){ // no ell-max conditions here!
             for(int l4=0; l4<=ORDER; l4++){
               for(int l5=fabs(l123-l4);l5<=fmin(ORDER,l123+l4);l5++){
                 if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity combinationss

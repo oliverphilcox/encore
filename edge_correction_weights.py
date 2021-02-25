@@ -64,11 +64,13 @@ elif N==4:
                 # Compute prefactor
                 pref = pref_2*np.sqrt((2.*Lp_1+1.)*(2.*Lp_2+1.)*(2.*Lp_3+1.))/(4.*np.pi)**(3./2.)
 
-                # Compute three-J couplings
+                # Compute 3j couplings
                 three_j_piece = np.float64(wigner_3j(L_1,Lp_1,Lpp_1,0,0,0)*wigner_3j(L_2,Lp_2,Lpp_2,0,0,0)*wigner_3j(L_3,Lp_3,Lpp_3,0,0,0))
+                if three_j_piece==0: continue
 
                 # Compute the 9j component
                 nine_j_piece = np.float64(wigner_9j(L_1,Lp_1,Lpp_1,L_2,Lp_2,Lpp_2,L_3,Lp_3,Lpp_3,prec=8))
+                if nine_j_piece==0: continue
 
                 tmp_out[j,k] = pref * three_j_piece * nine_j_piece
         return tmp_out
@@ -81,7 +83,7 @@ elif N==5:
     ell_1,ell_2,ell_12,ell_3,ell_4 = [[] for _ in range(5)]
     for l1 in range(0,LMAX+1,1):
         for l2 in range(0,LMAX+1,1):
-            for l12 in range(abs(l1-l2),min(l1+l2,LMAX)+1,1):
+            for l12 in range(abs(l1-l2),l1+l2+1,1):
                 for l3 in range(0,LMAX+1,1):
                     for l4 in range(abs(l12-l3),min(l12+l3,LMAX)+1,1):
                         if (-1.)**(l1+l2+l3+l4)==-1: continue
@@ -116,11 +118,13 @@ elif N==5:
                 # Compute prefactor
                 pref = pref_2*np.sqrt((2.*Lp_1+1.)*(2.*Lp_2+1.)*(2.*Lp_12+1.)*(2.*Lp_3+1.)*(2.+Lp_4+1.))/(4.*np.pi)**2.
 
-                # Compute three-J couplings
+                # Compute 3j couplings
                 three_j_piece = np.float64(wigner_3j(L_1,Lp_1,Lpp_1,0,0,0)*wigner_3j(L_2,Lp_2,Lpp_2,0,0,0)*wigner_3j(L_3,Lp_3,Lpp_3,0,0,0)*wigner_3j(L_4,Lp_4,Lpp_4,0,0,0))
+                if three_j_piece==0: continue
 
                 # Compute the 9j component
                 nine_j_piece = np.float64(wigner_9j(L_1,L_2,L_12,Lp_1,Lp_2,Lp_12,Lpp_1,Lpp_2,Lpp_12,prec=8))*np.float64(wigner_9j(L_12,L_3,L_4,Lp_12,Lp_3,Lp_4,Lpp_12,Lpp_3,Lpp_4,prec=8))
+                if nine_j_piece==0: continue
 
                 tmp_out[j,k] = pref * three_j_piece * nine_j_piece
         return tmp_out
@@ -133,9 +137,9 @@ elif N==6:
     ell_1,ell_2,ell_12,ell_3,ell_123,ell_4,ell_5 = [[] for _ in range(7)]
     for l1 in range(0,LMAX+1,1):
         for l2 in range(0,LMAX+1,1):
-            for l12 in range(abs(l1-l2),min(l1+l2,LMAX)+1,1):
+            for l12 in range(abs(l1-l2),l1+l2+1,1):
                 for l3 in range(0,LMAX+1,1):
-                    for l123 in range(abs(l12-l3),min(l12+l3,LMAX)+1,1):
+                    for l123 in range(abs(l12-l3),l12+l3+1,1):
                         for l4 in range(0,LMAX+1,1):
                             for l5 in range(abs(l123-l4),min(l123+l4,LMAX)+1,1):
                                 if (-1.)**(l1+l2+l3+l4+l5)==-1: continue
@@ -174,9 +178,11 @@ elif N==6:
 
                 # Compute three-J couplings
                 three_j_piece = np.float64(wigner_3j(L_1,Lp_1,Lpp_1,0,0,0)*wigner_3j(L_2,Lp_2,Lpp_2,0,0,0)*wigner_3j(L_3,Lp_3,Lpp_3,0,0,0)*wigner_3j(L_4,Lp_4,Lpp_4,0,0,0)*wigner_3j(L_5,Lp_5,Lpp_5,0,0,0))
+                if three_j_piece==0: continue
 
                 # Compute the 9j component
                 nine_j_piece = np.float64(wigner_9j(L_1,L_2,L_12,Lp_1,Lp_2,Lp_12,Lpp_1,Lpp_2,Lpp_12,prec=8))*np.float64(wigner_9j(L_12,L_3,L_123,Lp_12,Lp_3,Lp_123,Lpp_12,Lpp_3,Lpp_123,prec=8))*np.float64(wigner_9j(L_123,L_4,L_5,Lp_123,Lp_4,Lp_5,Lpp_123,Lpp_4,Lpp_5,prec=8))
+                if nine_j_piece==0: continue
 
                 tmp_out[j,k] = pref * three_j_piece * nine_j_piece
         return tmp_out
