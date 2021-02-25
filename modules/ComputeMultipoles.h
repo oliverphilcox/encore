@@ -3,11 +3,11 @@
 
 // ====================  Computing the pairs ==================
 
-void compute_multipoles(Grid *grid, Float rmax) {
-    int maxsep = ceil(rmax/grid->cellsize);   // How far we must search
+void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
+    int maxsep = ceil(rmax/grid->cellsize);   // Maximum distance we must search
     int ne;
     Float rmax2 = rmax*rmax;
-    Float rmin2 = rmax2*1e-12;    // Just an underflow guard
+    Float rmin2 = rmin*rmin; //rmax2*1e-12;    // Just an underflow guard
     uint64 cnt = 0;
 
     Multipoles *mlist = new Multipoles[MAXTHREAD*NBIN];  // Set up all of this space
@@ -95,7 +95,7 @@ void compute_multipoles(Grid *grid, Float rmax) {
 		    // Now what do we want to do with the pair?
 		    norm2 = sqrt(norm2);  // Now just radius
 		    // Find the radial bin
-		    int bin = floor(norm2/rmax*NBIN);
+		    int bin = floor((norm2-rmin)/(rmax-rmin)*NBIN);
 
         // Define x/r,y/r,z/r
 		    dx = dx/norm2;
@@ -144,11 +144,11 @@ void compute_multipoles(Grid *grid, Float rmax) {
 #endif
 #endif
 
-    printf("# We counted  %lld pairs within %f.\n", cnt, rmax);
+    printf("# We counted  %lld pairs within [%f %f].\n", cnt, rmin, rmax);
     printf("# Average of %f pairs per primary particle.\n",
     		(Float)cnt/grid->np);
     Float3 boxsize = grid->rect_boxsize;
-    float expected = grid->np * (4*M_PI/3.0)*pow(rmax,3.0)/(boxsize.x*boxsize.y*boxsize.z);
+    float expected = grid->np * (4*M_PI/3.0)*(pow(rmax,3.0)-pow(rmin,3.0))/(boxsize.x*boxsize.y*boxsize.z);
     printf("# We expected %1.0f pairs per primary particle, off by a factor of %f.\n", expected, cnt/(expected*grid->np));
     delete[] mlist;
 

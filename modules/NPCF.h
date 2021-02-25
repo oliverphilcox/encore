@@ -196,7 +196,7 @@ class NPCF {
       printf("\n");
     }
 
-    void save_power(char* out_string, Float rmax) {
+    void save_power(char* out_string, Float rmin, Float rmax) {
       // Print the output NPCF counts to file
 
       // SAVE 3PCF
@@ -209,6 +209,7 @@ class NPCF {
        // Print some useful information
        fprintf(OutFile,"## Order: %d\n",ORDER);
        fprintf(OutFile,"## Bins: %d\n",NBIN);
+       fprintf(OutFile,"## Minimum Radius = %.2e\n", rmin);
        fprintf(OutFile,"## Maximum Radius = %.2e\n", rmax);
        fprintf(OutFile,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Rows 3+ = zeta_ell^ab\n");
        fprintf(OutFile,"## Column 1 specifies the angular multipole\n");
@@ -258,6 +259,7 @@ class NPCF {
         // Print some useful information
         fprintf(OutFile2,"## Order: %d\n",ORDER);
         fprintf(OutFile2,"## Bins: %d\n",NBIN);
+        fprintf(OutFile2,"## Minimum Radius = %.2e\n", rmin);
         fprintf(OutFile2,"## Maximum Radius = %.2e\n", rmax);
         fprintf(OutFile2,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Rows 4+ = zeta_l1l2l3^abc\n");
         fprintf(OutFile2,"## Columns 1-3 specify the (l1, l2, l3) multipole triplet\n");
@@ -326,6 +328,7 @@ class NPCF {
         // Print some useful information
         fprintf(OutFile3,"## Order: %d\n",ORDER);
         fprintf(OutFile3,"## Bins: %d\n",NBIN);
+        fprintf(OutFile3,"## Minimum Radius = %.2e\n", rmin);
         fprintf(OutFile3,"## Maximum Radius = %.2e\n", rmax);
         fprintf(OutFile3,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Rows 5+ = zeta_l1l2(l12)l3l4^abcd\n");
         fprintf(OutFile3,"## Columns 1-5 specify the (l1, l2, (l12), l3, l4) multipole quintuplet\n");
@@ -415,6 +418,7 @@ class NPCF {
         // Print some useful information
         fprintf(OutFile4,"## Order: %d\n",ORDER);
         fprintf(OutFile4,"## Bins: %d\n",NBIN);
+        fprintf(OutFile4,"## Maximum Radius = %.2e\n", rmin);
         fprintf(OutFile4,"## Maximum Radius = %.2e\n", rmax);
         fprintf(OutFile4,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Row 5 = radial bin 5, Rows 6+ = zeta_l1l2(l12)l3(l123)l4l5^abcde\n");
         fprintf(OutFile4,"## Columns 1-7 specify the (l1, l2, (l12), l3, (l123), l4, l5) multipole septuplet\n");

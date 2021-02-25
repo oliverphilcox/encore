@@ -24,6 +24,7 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - For advanced usage, there is an option to store the multipoles of positively weighted primary particles. If multiple (D-R) sets are computed in series, this avoids the multipoles of the data being recomputed each time. More information regarding this is found in the comment in the ```modules/StoreMultipoles.h``` script.
 
 #### Main Options:
+- ```-rmin```: Minimum radius of the smallest pairwise separation bin in Mpc/h (default: 0).
 - ```-rmax```: Maximum radius of the largest pairwise separation bin in Mpc/h (default: 200).
 - ```-in```: Filename of the input file. This should be a space or tab-separated CSV file with columns [x,y,z,weight]. Lines starting with # will be skipped. (default: "sample.dat").
 - ```-outstr```: String to prepend to the output files (default: "sample").

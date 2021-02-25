@@ -17,7 +17,7 @@
 
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 // We output only NPCF with bin1 < bin2 < bin3 etc. to avoid degeneracy and the bins including zero separations
-#define NBIN 10
+#define NBIN 9
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.
@@ -114,7 +114,7 @@ class Pairs {
 	// }
   //   }
 
-    void save_pairs(char* out_string, Float rmax) {
+    void save_pairs(char* out_string, Float rmin, Float rmax) {
       // Print the output isotropic 2PCF counts to file
 
       // First create output files
@@ -124,6 +124,7 @@ class Pairs {
 
        // Print some useful information
        fprintf(OutFile,"## Bins: %d\n",NBIN);
+       fprintf(OutFile,"## Minimum Radius = %.2e\n", rmin);
        fprintf(OutFile,"## Maximum Radius = %.2e\n", rmax);
        fprintf(OutFile,"## Format: Row 1 = radial bin 1, Row 2 = xi^a\n");
 
@@ -215,6 +216,7 @@ void usage() {
     fprintf(stderr, "   -in <file>: The input file (space-separated x,y,z,w).  Default sample.dat.\n");
     fprintf(stderr, "   -outstr <outstring>: String to prepend to the output file.  Default sample.\n");
     fprintf(stderr, "   -def: This allows one to accept the defaults without giving other entries.\n");
+    fprintf(stderr, "   -rmin <rmin>: The minimum radius of the smallest pair bin.  Default 0.\n");
     fprintf(stderr, "   -rmax <rmax>: The maximum radius of the largest pair bin.  Default 200.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "   -ran <np>: Ignore any file and use np random perioidic points instead.\n");
@@ -249,6 +251,8 @@ int main(int argc, char *argv[]) {
     	// The particles will be read from the unit cube, but then scaled by boxsize.
     Float rmax = 200;
     	// The maximum radius of the largest bin.
+    Float rmin = 0;
+    // The minimum radius of the smallest bin.
     int nside = 50;
 	// The grid size, which should be tuned to match boxsize and rmax.
         // Don't forget to adjust this if changing boxsize!
@@ -283,6 +287,7 @@ int main(int argc, char *argv[]) {
          }
 	else if (!strcmp(argv[i],"-rescale")||!strcmp(argv[i],"-scale")) rescale = atof(argv[++i]);
 	else if (!strcmp(argv[i],"-rmax")||!strcmp(argv[i],"-max")) rmax = atof(argv[++i]);
+  else if (!strcmp(argv[i],"-rmin")||!strcmp(argv[i],"-min")) rmin = atof(argv[++i]);
 	else if (!strcmp(argv[i],"-nside")||!strcmp(argv[i],"-ngrid")||!strcmp(argv[i],"-grid")) nside = atoi(argv[++i]);
   else if (!strcmp(argv[i],"-in")) fname = argv[++i];
   else if (!strcmp(argv[i],"-outstr")) outstr = argv[++i];
@@ -316,6 +321,7 @@ int main(int argc, char *argv[]) {
 
     assert(box_min>0.0);
     assert(rmax>0.0);
+    assert(rmin>=0.0);
     assert(nside>0);
     assert(nside<300);   // Legal, but rather unlikely that we should use something this big!
     if (rescale<0.0) rescale = box_max;   // This would allow a unit cube to fill the periodic volume
@@ -326,6 +332,7 @@ int main(int argc, char *argv[]) {
     // Output for posterity
     printf("\nBox Size = {%6.5e,%6.5e,%6.5e}\n", rect_boxsize.x,rect_boxsize.y,rect_boxsize.z);
     printf("Grid = %d\n", nside);
+    printf("Minimum Radius = %6.3g\n", rmin);
     printf("Maximum Radius = %6.3g\n", rmax);
     Float gridsize = rmax/(box_max/nside);
     printf("Radius in Grid Units = %6.3g\n", gridsize);
@@ -408,8 +415,8 @@ int main(int argc, char *argv[]) {
 
     Float grid_density = (double)np/grid.nf;
     printf("Average number of particles per grid cell = %6.2g\n", grid_density);
-    printf("Average number of particles per max_radius ball = %6.2g\n",
-	np*4.0*M_PI/3.0*pow(rmax,3.0)/(rect_boxsize.x*rect_boxsize.y*rect_boxsize.z));
+    printf("Average number of particles within allowed radii shell = %6.2g\n",
+	np*4.0*M_PI/3.0*(pow(rmax,3.0)-pow(rmin,3.0))/(rect_boxsize.x*rect_boxsize.y*rect_boxsize.z));
     if (grid_density<1) printf("#\n# WARNING: grid appears inefficiently fine.\n#\n");
 
     smsave = smload = NULL;
@@ -432,7 +439,7 @@ int main(int argc, char *argv[]) {
 
     // Everything above here takes negligible time.  This line is nearly all of the work.
     MultipoleTime.Start();
-    compute_multipoles(&grid, rmax);
+    compute_multipoles(&grid, rmin, rmax);
     printf("# Done counting the pairs\n");
     MultipoleTime.Stop();
 
@@ -446,8 +453,8 @@ int main(int argc, char *argv[]) {
     //pairs[0].report_pairs();
 
     // Save the outputs
-    pairs[0].save_pairs(outstr, rmax);
-npcf[0].save_power(outstr, rmax);
+    pairs[0].save_pairs(outstr, rmin, rmax);
+npcf[0].save_power(outstr, rmin, rmax);
 
     IOTime.Start();
     if (smsave!=NULL) {
