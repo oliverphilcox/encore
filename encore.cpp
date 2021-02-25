@@ -17,7 +17,7 @@
 
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 // We output only NPCF with bin1 < bin2 < bin3 etc. to avoid degeneracy and the bins including zero separations
-#define NBIN 9
+#define NBIN 20
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 4 for 5PCF.

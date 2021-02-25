@@ -18,11 +18,11 @@
 # NB: If needed, we could access a task ID by SLURM_ARRAY_TASK_ID, if we're running with SLURM
 ##########################################################
 
-#SBATCH -n 16 # cpus
+#SBATCH -n 20 # cpus
 #SBATCH -N 1 # tasks
-#SBATCH -t 0-07:59 # time
-#SBATCH -o /home/ophilcox/out/npcf6_run.%A.out         # File to which STDOUT will be written (make sure the directory exists!)
-#SBATCH -e /home/ophilcox/out/npcf6_run.%A.err         # File to which STDERR will be written
+#SBATCH -t 0-11:59 # time
+#SBATCH -o /home/ophilcox/out/boss4pcf_run.%A.out         # File to which STDOUT will be written (make sure the directory exists!)
+#SBATCH -e /home/ophilcox/out/boss4pcf_run.%A.err         # File to which STDERR will be written
 #SBATCH --mail-type=END,FAIL        # Type of email notification
 #SBATCH --mail-user=ophilcox@princeton.edu # Email to which notifications will be sent
 
@@ -31,7 +31,7 @@
 # Main inputs
 set useAVX = 1 # whether we have AVX support
 set periodic = 0 # whether to run with periodic boundary conditions (should also be set in Makefile)
-set rmin = 0 # minimum radius in Mpc/h
+set rmin = 20 # minimum radius in Mpc/h
 set rmax = 170 # maximum radius in Mpc/h
 
 # Other inputs
@@ -43,8 +43,8 @@ set boxsize = 1000 # only used if periodic=1
 set root = boss_cmass # root for data filenames
 set ranroot = boss_cmass # root for random filenames
 set in = /projects/QUIJOTE/Oliver/npcf/data # input directory (see above for required contents)
-set out = /projects/QUIJOTE/Oliver/npcf/boss_6pcf # output file directory
-set tmp = /scratch/gpfs/ophilcox/npcf6_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
+set out = /projects/QUIJOTE/Oliver/npcf/boss_4pcf_production # output file directory
+set tmp = /scratch/gpfs/ophilcox/npcf4_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
 
 # Load some python environment with numpy and sympy installed
 module load anaconda3
@@ -60,7 +60,7 @@ setenv OMP_NUM_THREADS $SLURM_NPROCS
 
 # Define command to run the C++ code
 if ($useAVX) then
-  set code = ./encoreAVX6
+  set code = ./encoreAVX
 else
   set code = ./encore
 endif
