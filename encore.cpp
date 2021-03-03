@@ -1,4 +1,4 @@
-// npcf_estimator.cpp -- Oliver Philcox, 2020. Based on Daniel Eisenstein's 3PCF code.
+// encore.cpp -- Oliver Philcox, 2021. Vaguely based on Daniel Eisenstein's 3PCF code.
 
 #include <math.h>
 #include <stdlib.h>
@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <complex>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include "threevector.hh"
 #include "STimer.cc"
 
@@ -117,6 +118,13 @@ class Pairs {
     void save_pairs(char* out_string, Float rmin, Float rmax) {
       // Print the output isotropic 2PCF counts to file
 
+      // Create output directory if not in existence
+      const char* out_dir;
+      out_dir = "output";
+      if (mkdir(out_dir,S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)==0){
+            printf("\nCreating output directory\n");
+        }
+      
       // First create output files
        char out_name[1000];
         snprintf(out_name, sizeof out_name, "output/%s_2pcf.txt", out_string);
