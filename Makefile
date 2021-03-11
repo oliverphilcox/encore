@@ -13,7 +13,7 @@ CXXFLAGS = -O3
 # extra code for parallelization reports
 #-qopt-report=5 -qopt-report-phase=vec -inline-level=0 -qopt-report-filter="NPCF.h,598-683" -qopt-report-file=$@.optrpt
 
-MODES = -DOPENMP -DFOURPCF
+MODES = -DDISCONNECTED -DOPENMP
 # Add the -DPERIODIC flag to run with periodic boundary conditions
 # Add the -DFOURPCF flag to include the four-point correlator
 # Add the -DFIVEPCF flag to include the five-point correlator

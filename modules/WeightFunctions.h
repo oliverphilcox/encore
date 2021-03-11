@@ -242,6 +242,25 @@ void generate_4pcf_weights(){
 };
 #endif
 
+#ifdef DISCONNECTED
+// Create array for disconnected weights
+
+Float weightdiscon[(ORDER+1)*(ORDER+1)];
+
+void generate_discon_weights(){
+  // Generate the disconnected weight arrays for the specific LMAX used here.
+  // This includes the additional normalization factors and (-1)^m from complex conjugation
+
+  for (int ell1=0, n1=0; ell1<=ORDER; ell1++) {
+    for (int mm1=-ell1; mm1<=ell1; mm1++, n1++) {
+      // Define normalization, including the extra factor of (-1)^m1
+      weightdiscon[n1] = sqrt(almnorm[ell1*(ell1+1)/2+abs(mm1)])*pow(-1.,mm1);
+      // also add in factors from complex conjugations of m1,m2
+      if(mm1<0) weightdiscon[n1] *= pow(-1.,mm1);
+    }
+  }
+};
+#endif
 
 #ifdef FIVEPCF
 // Create array for 5PCF weights (to be filled at runtime from almnorm and the coupling matrices)

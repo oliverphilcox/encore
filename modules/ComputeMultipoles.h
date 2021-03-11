@@ -150,6 +150,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
     Float3 boxsize = grid->rect_boxsize;
     float expected = grid->np * (4*M_PI/3.0)*(pow(rmax,3.0)-pow(rmin,3.0))/(boxsize.x*boxsize.y*boxsize.z);
     printf("# We expected %1.0f pairs per primary particle, off by a factor of %f.\n", expected, cnt/(expected*grid->np));
+
     delete[] mlist;
 
     // Detailed timing breakdown
