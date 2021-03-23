@@ -37,6 +37,11 @@ typedef double Float;
 typedef double3 Float3;
 typedef std::complex<double> Complex;
 
+//0 = CPU
+//1 = GPU primary kernel
+//2, higher = alternate kernels
+short _gpumode = 0;
+
 // We need a vector floor3 function
 Float3 floor3(float3 p) {
     return Float3(floor(p.x), floor(p.y), floor(p.z));
@@ -238,6 +243,7 @@ void usage() {
     fprintf(stderr, "The intention is to allow re-use of DD counts while changing the DR and RR counts.\n");
     fprintf(stderr, "    -balance: Rescale the negative weights so that the total weight is zero.\n");
     fprintf(stderr, "    -invert: Multiply all the weights by -1.\n");
+    fprintf(stderr, "    -gpu: GPU mode => 0 = CPU, 1 = GPU, 2+ = GPU alternate kernel\n");
 
     exit(1);
     return;
@@ -306,6 +312,7 @@ int main(int argc, char *argv[]) {
 		make_random=1;
 	    }
 	else if (!strcmp(argv[i],"-def")||!strcmp(argv[i],"-default")) { fname = NULL; }
+	else if (!strcmp(argv[i],"-gpu")) _gpumode = atoi(argv[++i]);
 	else {
 	    fprintf(stderr, "Don't recognize %s\n", argv[i]);
 	    usage();

@@ -4,10 +4,21 @@
 // ========================== Here are all of the cross-powers ============
 
 #include "WeightFunctions.h"
+#include "gpufuncs.h"
 
 class NPCF {
 // This should accumulate the NPCF contributions, for all combination of bins.
   public:
+bool doprint = true;
+int pcount = 0;
+    bool generate_luts = true;
+    //declare LUTs as pointers -- we'll want to allocate and populate once
+    int *lut5_l1, *lut5_l2, *lut5_l12, *lut5_l3, *lut5_l4;
+    int *lut5_m1, *lut5_m2, *lut5_m3;
+    int *lut5_n, *lut5_zeta;
+    int *lut5_i, *lut5_j, *lut5_k, *lut5_l;
+    double *d_weight5pcf, *d_fivepcf;
+
     uint64 bincounts[NBIN];
     Float binweight[NBIN];
     int map[MAXORDER+1][MAXORDER+1][MAXORDER+1];   // The multipole index of x^a y^b z^c
@@ -42,6 +53,8 @@ class NPCF {
     Float *fivepcf;
     // length of angular part of 5PCF
     int nell5;
+    //lengths of look up tables for indices
+    int nouter5, ninner5;
 #endif
 
 #ifdef SIXPCF
@@ -114,6 +127,7 @@ class NPCF {
         }
       }
     }
+
     // Now allocate memory
     fivepcf = (Float *)malloc(sizeof(Float)*nell5*N5PCF);
 
@@ -527,6 +541,8 @@ class NPCF {
      }
 
   inline void add_to_power(Multipoles *mult, Float wp) {
+if (pcount % 100 == 0) std::cout << "PCOUNT " << pcount << std::endl;
+pcount++;
       // wp is the primary galaxy weight
 	// Now use all of the binned multipoles to compute the
 	// spherical harmonics in all bins and then the cross-powers.
@@ -700,99 +716,162 @@ class NPCF {
   Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN]; // arrays to hold intermediate a_lm lists
   Complex alm1w, alm2, alm3; // intermediate a_lm values
 
-  // Iterate over (l1, l2, (l12), l3, l4) quintuplet
-  // NB: n indexes position in the 5PCF weight array, and must be carefully set
-  // We only compute terms with even parity i.e. even l1+l2+l3+l4. These are all real.
-  // The odd parity terms could be included if necessary and are purely imaginary
+  if (_gpumode == 0) generate_luts = false;
+  if (generate_luts) {
+    //can only get here in _gpumode > 0
+    generate_luts = false;
+    n = 0;
+    nouter5 = 0;
+    ninner5 = N5PCF;
 
-  // Iterate over first multipole
-  n=0;
-  for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+    //first calculate nouter5 = LUT size
+    if (_gpumode == 1) {
+      //use primary GPU kernel
+      //generate LUTs here for primary GPU kernel
+      //ms are looped over in kernel so we have nell5*N5PCF threads
+      for(int l1=0;l1<=ORDER;l1++){
+        for(int l2=0;l2<=ORDER;l2++){
+          for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
+            for(int l3=0;l3<=ORDER;l3++){
+              for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) {
+                // Skip any odd multipoles with odd parity
+                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+	        nouter5++;
+              }
+            }
+          }
+        }
+      }
+    } else if (_gpumode == 2) {
+      //alternate kernel - every inner loop operation is a thread
+      //need to create larger LUTs of ls and ms
+      for(int l1=0;l1<=ORDER;l1++){
+        for(int l2=0;l2<=ORDER;l2++){
+          for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
+            for(int l3=0;l3<=ORDER;l3++){
+              for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) {
+                // Skip any odd multipoles with odd parity
+                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+  
+                for(int m1=-l1; m1<=l1; m1++){
+                  // Iterate over all m2 (including negative)
+                  for(int m2=-l2; m2<=l2; m2++){
+                    if(abs(m1+m2)>l12) continue; // m12 condition
+                    // Iterate over m3 (including negative)
+                    for(int m3=-l3; m3<=l3; m3++){
+                      m4 = -m1-m2-m3;
+                      if (m4<0) continue; // only need to use m4>=0
+                      if (m4>l4) continue; // this violates triangle conditions
+                      // Look up the relevant weight
+                      weight = weight5pcf[n++];
+                      if (weight==0) continue;
+		      nouter5++;
+		    }
+	          }
+	        }
+              }
+            }
+          }
+        }
+      }
+    }
 
-     tmp_l1 = l1*(l1+1)/2;
+    //malloc all look up tables (LUTs) - primary kernel
+    gpu_allocate_luts(&lut5_l1, &lut5_l2, &lut5_l12, &lut5_l3,
+	&lut5_l4, &lut5_n, &lut5_zeta, &lut5_i, &lut5_j,
+	&lut5_k, &lut5_l, nouter5, ninner5);
 
-     // Iterate over second multipole
-     for(int l2=0; l2<=ORDER; l2++){
+    if (_gpumode == 2) {
+      //malloc m LUTs
+      gpu_allocate_m_luts(&lut5_m1, &lut5_m2, &lut5_m3, nouter5);
+    }
+    //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+    //gpu_allocate_weight5pcf(&d_weight5pcf, weight5pcf, size_w); 
+    //gpu_allocate_fivepcf(&d_fivepcf, fivepcf, nell5*N5PCF);
 
-       tmp_l2 = l2*(l2+1)/2;
+    //populate LUTs
+    int iouter5 = 0;
+    n = 0; //DONT FORGET TO RESET N!
 
-       // Iterate over internal multipole, avoiding bins violating triangle condition
-       // but allowing for any allowed internal momenta
-       for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
+    if (_gpumode == 1) {
+      //use primary GPU kernel
+      //generate LUTs here for primary GPU kernel
+      //ms are looped over in kernel so we have nell5*N5PCF threads
+      for(int l1=0,zeta_index=0;l1<=ORDER;l1++){
+        for(int l2=0;l2<=ORDER;l2++){
+          for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
+            for(int l3=0;l3<=ORDER;l3++){
+              for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
+                // Skip any odd multipoles with odd parity
+                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+	        //update l luts here
+                lut5_l1[iouter5] = l1;
+                lut5_l2[iouter5] = l2;
+                lut5_l12[iouter5] = l12;
+                lut5_l3[iouter5] = l3;
+                lut5_l4[iouter5] = l4;
+	        lut5_n[iouter5] = n; //this is the starting n for this GPU thread
+	        //GPU thread will then loop over ms
+                lut5_zeta[iouter5] = zeta_index;
+	        //loop over ms - need to update n so that LUT has correct
+	        //n_init for all threads 
+                for(int m1=-l1; m1<=l1; m1++){
+                  // Iterate over all m2 (including negative)
+                  for(int m2=-l2; m2<=l2; m2++){
+                    if(abs(m1+m2)>l12) continue; // m12 condition
+                    // Iterate over m3 (including negative)
+                    for(int m3=-l3; m3<=l3; m3++){
+                      m4 = -m1-m2-m3;
+                      if (m4<0) continue; // only need to use m4>=0
+                      if (m4>l4) continue; // this violates triangle conditions
+		      //simply increment n here
+		      n++;
+                    }
+                  }
+                }
+	        iouter5++; //now increment iouter5
+              }
+            }
+          }
+        }
+      }
+    } else if (_gpumode == 2) {
+      //use alternate kernel
+      //need to create larger LUTs of ls and ms
+      for(int l1=0,zeta_index=0;l1<=ORDER;l1++){
+        for(int l2=0;l2<=ORDER;l2++){
+          for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
+            for(int l3=0;l3<=ORDER;l3++){
+              for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
+                // Skip any odd multipoles with odd parity
+                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                //loop over ms - need to update n so that LUT has correct
+                for(int m1=-l1; m1<=l1; m1++){
+                  // Iterate over all m2 (including negative)
+                  for(int m2=-l2; m2<=l2; m2++){
+                    if(abs(m1+m2)>l12) continue; // m12 condition
+                    // Iterate over m3 (including negative)
+                    for(int m3=-l3; m3<=l3; m3++){
+                      m4 = -m1-m2-m3;
+                      if (m4<0) continue; // only need to use m4>=0
+                      if (m4>l4) continue; // this violates triangle conditions
+                      // Look up the relevant weight
+                      weight = weight5pcf[n++];
+                      if (weight==0) continue;
 
-         // Iterate over third multipole
-         for(int l3=0; l3<=ORDER; l3++){
-
-           tmp_l3 = l3*(l3+1)/2;
-
-           // Iterate over fourth multipole, avoiding bins violating triangle condition
-           for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
-
-           // Skip any odd multipoles with odd parity
-           if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
-
-            tmp_l4 = l4*(l4+1)/2;
-
-             // Iterate over all m1 (including negative)
-             for(int m1=-l1; m1<=l1; m1++){
-
-               // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-               if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
-               else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
-
-               // Iterate over all m2 (including negative)
-               for(int m2=-l2; m2<=l2; m2++){
-                 if(abs(m1+m2)>l12) continue; // m12 condition
-
-                 // Create temporary copy of a_l2m2, taking conjugate if necessary
-                 if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
-                 else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
-
-                 // Iterate over m3 (including negative)
-                for(int m3=-l3; m3<=l3; m3++){
-
-                  m4 = -m1-m2-m3;
-                  if (m4<0) continue; // only need to use m4>=0
-                  if (m4>l4) continue; // this violates triangle conditions
-
-                  // Look up the relevant weight
-                  weight = weight5pcf[n++];
-                  if (weight==0) continue;
-
-                  tmp_lm4 = tmp_l4+m4;
-
-                  // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
-                  // No conjugates needed for a_l4m4 since we fixed m4>=0!
-                  // Note we add the coupling weight factor to a_l4m4
-                  if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_l3-m3];
-                  else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_l3+m3];
-
-                  // Now fill up the 5PCF.
-                  // Iterate over first radial bin in lower hypertriangle
-                  for(int i=0, bin_index=zeta_index; i<NBIN; i++){
-
-                    alm1w = alm1wlist[i];
-
-                    // Iterate over second bin
-                    for(int j=i+1; j<NBIN; j++){
-
-                      alm2 = alm2list[j]*alm1w;
-
-                      // Iterate over third bin
-                      for(int k=j+1; k<NBIN; k++){
-
-                        alm3 = alm3list[k]*alm2;
-
-                        // Iterate over final bin and advance the 5PCF array counter
-                        for(int l=k+1; l<NBIN; l++){
-                            // Add contribution to 5PCF array
-                            fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).real();
-
-                            }
-                          }
-                        }
-                      }
-                  //End of radial binning loops
+                      lut5_l1[iouter5] = l1;
+                      lut5_l2[iouter5] = l2;
+                      //lut5_l12[iouter5] = l12; Don't need l12 for alternate kernel
+                      lut5_l3[iouter5] = l3;
+                      lut5_l4[iouter5] = l4;
+                      lut5_m1[iouter5] = m1;
+                      lut5_m2[iouter5] = m2;
+                      lut5_m3[iouter5] = m3;
+                      lut5_n[iouter5] = n-1;
+                      lut5_zeta[iouter5] = zeta_index;
+		      iouter5++;
+                    }
+                  }
                 }
               }
             }
@@ -800,6 +879,134 @@ class NPCF {
         }
       }
     }
+
+    //inner LUTs the same for all kernels
+    int iinner = 0;
+    for(int i=0; i<NBIN; i++){
+      for(int j=i+1; j<NBIN; j++){
+        for(int k=j+1; k<NBIN; k++){
+          for(int l=k+1; l<NBIN; l++){
+	    lut5_i[iinner] = i;
+            lut5_j[iinner] = j;
+            lut5_k[iinner] = k;
+            lut5_l[iinner] = l;
+	    iinner++;
+	  }
+	}
+      }
+    }
+  }
+
+  // Iterate over (l1, l2, (l12), l3, l4) quintuplet
+  // NB: n indexes position in the 5PCF weight array, and must be carefully set
+  // We only compute terms with even parity i.e. even l1+l2+l3+l4. These are all real.
+  // The odd parity terms could be included if necessary and are purely imaginary
+
+  // Iterate over first multipole
+
+  if (_gpumode == 1) {
+    //execute GPU kernel
+    gpu_add_to_power5(fivepcf, weight5pcf, &(alm[0][0]), &(almconj[0][0]), 
+	lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, 
+	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
+	wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+  } else if (_gpumode == 2) {
+    //execute alternate GPU kernel 
+    gpu_add_to_power5_orig(fivepcf, weight5pcf, &(alm[0][0]), &(almconj[0][0]), 
+        lut5_l1, lut5_l2, lut5_l3, lut5_l4, 
+	lut5_m1, lut5_m2, lut5_m3,
+        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
+        wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+  } else if (_gpumode == 0) {
+    //run on CPU
+    n=0;
+    for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+      tmp_l1 = l1*(l1+1)/2;
+      // Iterate over second multipole
+      for(int l2=0; l2<=ORDER; l2++){
+        tmp_l2 = l2*(l2+1)/2;
+        // Iterate over internal multipole, avoiding bins violating triangle condition
+        // but allowing for any allowed internal momenta
+        for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
+          // Iterate over third multipole
+          for(int l3=0; l3<=ORDER; l3++){
+            tmp_l3 = l3*(l3+1)/2;
+            // Iterate over fourth multipole, avoiding bins violating triangle condition
+            for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
+              // Skip any odd multipoles with odd parity
+              if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              tmp_l4 = l4*(l4+1)/2;
+
+              // Iterate over all m1 (including negative)
+              for(int m1=-l1; m1<=l1; m1++){
+                // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+                if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
+                else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
+
+                // Iterate over all m2 (including negative)
+                for(int m2=-l2; m2<=l2; m2++){
+                  if(abs(m1+m2)>l12) continue; // m12 condition
+                  // Create temporary copy of a_l2m2, taking conjugate if necessary
+                  if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
+                  else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
+
+                  // Iterate over m3 (including negative)
+                  for(int m3=-l3; m3<=l3; m3++){
+                    m4 = -m1-m2-m3;
+                    if (m4<0) continue; // only need to use m4>=0
+                    if (m4>l4) continue; // this violates triangle conditions
+
+                    // Look up the relevant weight
+                    weight = weight5pcf[n++];
+                    if (weight==0) continue;
+                    tmp_lm4 = tmp_l4+m4;
+
+                    // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+                    // No conjugates needed for a_l4m4 since we fixed m4>=0!
+                    // Note we add the coupling weight factor to a_l4m4
+                    if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_l3-m3];
+                    else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_l3+m3];
+
+                    // Now fill up the 5PCF.
+                    // Iterate over first radial bin in lower hypertriangle
+                    for(int i=0, bin_index=zeta_index; i<NBIN; i++){
+                      alm1w = alm1wlist[i];
+                      // Iterate over second bin
+                      for(int j=i+1; j<NBIN; j++){
+                        alm2 = alm2list[j]*alm1w;
+                        // Iterate over third bin
+                        for(int k=j+1; k<NBIN; k++){
+                          alm3 = alm3list[k]*alm2;
+                          // Iterate over final bin and advance the 5PCF array counter
+                          for(int l=k+1; l<NBIN; l++){
+                            // Add contribution to 5PCF array
+                            fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).real();
+                          }
+                        }
+                      }
+                    }
+                    //End of radial binning loops
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    //End of l loops
+  }
+
+  if (doprint) {
+    int j2 = 0;
+    while (fivepcf[j2] == 0) j2++;
+    std::cout << j2 << " " << fivepcf[j2] << std::endl;
+    std::cout << "F" << fivepcf[0] << " " << fivepcf[3679] << " " << fivepcf[4845] << " " << fivepcf[4845*1500] << " " << fivepcf[nell5*N5PCF-4846] << " " << fivepcf[nell5*N5PCF-1] << std::endl;
+    doprint = false;
+  } 
+  if (pcount == 17) {
+    std::cout << "PCOUNT " << pcount << std::endl;
+    std::cout << "F" << fivepcf[0] << " " << fivepcf[3679] << " " << fivepcf[4845] << " " << fivepcf[4845*1500] << " " << fivepcf[nell5*N5PCF-4846] << " " << fivepcf[nell5*N5PCF-1] << std::endl;
   }
   BinTimer5.Stop();
 }
@@ -947,6 +1154,14 @@ class NPCF {
 #endif
 
 	return;
+    }
+
+    void free_gpu_memory() {
+      gpu_free_memory(d_fivepcf, d_weight5pcf,
+        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, lut5_n,
+        lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l);
+
+      gpu_free_memory_m(lut5_m1, lut5_m2, lut5_m3);
     }
 
 };  // end NPCF class
