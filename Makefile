@@ -32,9 +32,11 @@ AVX = -DAVX
 
 ###############
 
-default: gpufuncs encore encoreAVX
+default: encore encoreAVX
 
 cpu: encore encoreAVX
+
+gpu: gpufuncs encore encoreAVX
 
 CMASM.o:
 	$(CC) -DAVXMULTIPOLES generateCartesianMultipolesASM.c
