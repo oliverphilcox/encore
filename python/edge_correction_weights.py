@@ -190,7 +190,7 @@ elif N==6:
     pool = multiprocessing.Pool(threads)
     coupling_matrix = np.asarray(list(pool.map(compute_matrix_coeff, range(len(ell_1)))))
 
-outfile = os.path.dirname(os.path.realpath(sys.argv[0]))+'/coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+outfile = os.path.dirname(os.path.realpath(sys.argv[0]))+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
 print(outfile)
 np.save(outfile,coupling_matrix)
 print("Coupling matrix saved to %s"%outfile)

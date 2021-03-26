@@ -285,7 +285,7 @@ class NPCF {
        printf("3PCF Output saved to %s\n",out_name);
 
 #ifdef FOURPCF
-
+    {
        // SAVE 4PCF
 
        // First create output files
@@ -349,7 +349,7 @@ class NPCF {
         fclose(OutFile2);
 
         printf("4PCF Output saved to %s\n",out_name2);
-
+      }
 
 #endif
 
@@ -781,91 +781,91 @@ class NPCF {
 
 #endif
 
-#ifdef FOURPCF
-    {
-    // COMPUTE 4PCF CONTRIBUTIONS
+  #ifdef FOURPCF
+      {
+      // COMPUTE 4PCF CONTRIBUTIONS
 
-    BinTimer4.Start();
+      BinTimer4.Start();
 
-    int tmp_l1, tmp_l2, tmp_l3, tmp_lm3, m3; // useful indices
-    Float weight; // coupling weight
-    Complex alm1wlist[NBIN], alm2list[NBIN]; // arrays to hold intermediate a_lm lists
-    Complex alm1w, alm2; // intermediate a_lm values
+      int tmp_l1, tmp_l2, tmp_l3, tmp_lm3, m3; // useful indices
+      Float weight; // coupling weight
+      Complex alm1wlist[NBIN], alm2list[NBIN]; // arrays to hold intermediate a_lm lists
+      Complex alm1w, alm2; // intermediate a_lm values
 
-    // Iterate over (l1, l2, l3) triplet
-    // NB: n indexes position in the 4PCF weight array, and must be carefully set
-    // We only compute terms with even parity i.e. even l1+l2+l3. These are all real.
-    // The odd parity terms could be included if necessary and are purely imaginary
+      // Iterate over (l1, l2, l3) triplet
+      // NB: n indexes position in the 4PCF weight array, and must be carefully set
+      // We only compute terms with even parity i.e. even l1+l2+l3. These are all real.
+      // The odd parity terms could be included if necessary and are purely imaginary
 
-    // Iterate over first multipole
-    for(int l1=0, zeta_index=0, n=0; l1<=ORDER; l1++) {
+      // Iterate over first multipole
+      for(int l1=0, zeta_index=0, n=0; l1<=ORDER; l1++) {
 
-      tmp_l1 = l1*(l1+1)/2;
+        tmp_l1 = l1*(l1+1)/2;
 
-     // Iterate over second multipole
-     for(int l2=0; l2<=ORDER; l2++){
+       // Iterate over second multipole
+       for(int l2=0; l2<=ORDER; l2++){
 
-       tmp_l2 = l2*(l2+1)/2;
+         tmp_l2 = l2*(l2+1)/2;
 
-       // Iterate over internal multipole, avoiding bins violating triangle condition
-       for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
+         // Iterate over internal multipole, avoiding bins violating triangle condition
+         for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
 
-         // Skip any odd multipoles with odd parity
-         if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+           // Skip any odd multipoles with odd parity
+           if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
 
-        tmp_l3 = l3*(l3+1)/2;
+          tmp_l3 = l3*(l3+1)/2;
 
-         // Iterate over all m1 (including negative)
-         for(int m1=-l1; m1<=l1; m1++){
+           // Iterate over all m1 (including negative)
+           for(int m1=-l1; m1<=l1; m1++){
 
-           // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-           if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
-           else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
+             // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+             if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
+             else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
 
-           // Iterate over all m2 (including negative)
-           for(int m2=-l2; m2<=l2; m2++){
-             m3 = -m1-m2;
-             if (m3<0) continue; // only need to use m3>=0
-             if (m3>l3) continue; // this violates triangle conditions
-             tmp_lm3 = tmp_l3+m3;
+             // Iterate over all m2 (including negative)
+             for(int m2=-l2; m2<=l2; m2++){
+               m3 = -m1-m2;
+               if (m3<0) continue; // only need to use m3>=0
+               if (m3>l3) continue; // this violates triangle conditions
+               tmp_lm3 = tmp_l3+m3;
 
-             // Look up the relevant weight and advance index
-             weight = weight4pcf[n++];
-             if (weight==0) continue;
+               // Look up the relevant weight and advance index
+               weight = weight4pcf[n++];
+               if (weight==0) continue;
 
-             // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
-             // No conjugates needed for a_l3m3 since we fixed m3>=0!
-             // Note we add the coupling weight factor to a_l3m3
-             if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
-             else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
+               // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+               // No conjugates needed for a_l3m3 since we fixed m3>=0!
+               // Note we add the coupling weight factor to a_l3m3
+               if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
+               else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
 
-              // Now fill up the 4PCF.
-              // Iterate over first radial bin in lower hypertriangle
-              for(int i=0, bin_index=zeta_index; i<NBIN; i++){
+                // Now fill up the 4PCF.
+                // Iterate over first radial bin in lower hypertriangle
+                for(int i=0, bin_index=zeta_index; i<NBIN; i++){
 
-                alm1w = alm1wlist[i];
+                  alm1w = alm1wlist[i];
 
-                // Iterate over second bin
-                for(int j=i+1; j<NBIN; j++){
+                  // Iterate over second bin
+                  for(int j=i+1; j<NBIN; j++){
 
-                  alm2 = alm2list[j]*alm1w;
+                    alm2 = alm2list[j]*alm1w;
 
-                  // Iterate over final bin and advance the 4PCF array counter
-                  for(int k=j+1; k<NBIN; k++){
+                    // Iterate over final bin and advance the 4PCF array counter
+                    for(int k=j+1; k<NBIN; k++){
 
-                    // Add contribution to 4PCF array
-                    fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).real();
+                      // Add contribution to 4PCF array
+                      fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).real();
+                    }
                   }
                 }
+                //End of radial binning loops
               }
-              //End of radial binning loops
             }
           }
         }
       }
+    BinTimer4.Stop();
     }
-  BinTimer4.Stop();
-  }
   #endif
 
   #ifdef FIVEPCF

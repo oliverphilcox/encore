@@ -1,10 +1,8 @@
-### combine_disconnected_files.py (Oliver Philcox, 2021)
-# This reads in a set of (data-random) and (random) particle counts and uses them to construct the disconnected N-point functions, including edge-correction
+### combine_disconnected_files_periodic.py (Oliver Philcox, 2021)
+# This reads in a set of (data-random) and (random) particle counts and uses them to construct the disconnected N-point functions, assuming a periodic geometry.
 # It is designed to be used with the run_npcf.csh script
-# Currently only the 4PCF is supported. The code will try to load the edge correction coupling matrices from the coupling_matrices/ directory, and recompute them if not
+# Currently only the 4PCF is supported.
 # The output is saved to the working directory with the same format as the NPCF counts, with the filename ...zeta_discon_{N}pcf.txt
-# Note that we optionally save the output RRR coupling matrix as a .npy file, which is of use if many simulations with the same geometry are being analyzed.
-# This is triggered if one enters a file name for the outRcoupling input. The file will be created if not present, and loaded otherwise.
 
 import sys, os, time
 import subprocess
@@ -13,15 +11,16 @@ import multiprocessing
 from sympy.physics.wigner import wigner_3j
 
 ## First read-in the input file string from the command line
-if len(sys.argv)!=3 and len(sys.argv)!=4:
-    raise Exception("Need to specify the input files and N!")
+if len(sys.argv)!=7:
+    raise Exception("Need to specify the input files, N, number of galaxies, boxsize, R_min and R_max!")
 else:
     inputs = str(sys.argv[1])
     N = int(sys.argv[2])
-if len(sys.argv)==4:
-    outRcoupling = str(sys.argv[3])
-else:
-    outRcoupling = ''
+    N_gal = int(sys.argv[3])
+    boxsize = np.float64(sys.argv[4])
+    R_min = np.float64(sys.argv[5])
+    R_max = np.float64(sys.argv[6])
+n_bar = np.float64(N_gal)/boxsize**3.
 
 print("Reading in files starting with %s\n"%inputs)
 init = time.time()
@@ -34,12 +33,11 @@ def get_script_path():
 
 #################### COMPUTE XI_LM ####################
 
-#### Load in RR_lm piece
-R_file = inputs+'.r_2pcf_mult1.txt'
-countsR = np.loadtxt(R_file,skiprows=7) # skipping rows with radial bins
-l1_lm, m1_lm = np.asarray(countsR[:,:2],dtype=int).T
-bin1_lm = np.asarray(np.loadtxt(R_file,skiprows=6,max_rows=1),dtype=int)
-RR_lm = countsR[:,2::2]+1.0j*countsR[:,3::2]
+#### Load in first D-R piece to get bins
+tmp_file = inputs+'.n00_2pcf_mult1.txt'
+counts_tmp = np.loadtxt(tmp_file,skiprows=7) # skipping rows with radial bins
+l1_lm, m1_lm = np.asarray(counts_tmp[:,:2],dtype=int).T
+bin1_lm = np.asarray(np.loadtxt(tmp_file,skiprows=6,max_rows=1),dtype=int)
 
 n_ell = len(np.unique(l1_lm))
 lmax = n_ell-1
@@ -59,66 +57,31 @@ countsN_all = np.asarray(countsN_all)
 N_files = len(countsN_all)
 NN_lm = np.mean(countsN_all,axis=0)
 
-#### Compute coupling matrix if necessary
-coupling_file = get_script_path()+'/coupling_matrices/disconnected_coupling_matrix1_lmax%d.npy'%lmax
-try:
-    C_matrix = np.load(coupling_file)
-    print("Loading coupling matrix from file")
-except IOError:
-    print("Computing xi_lm coupling matrix for l_max = %d"%lmax)
+# Function to compute radius from bin index
+radius = lambda bin, n_r: R_min + 1.*bin*(R_max-R_min)/n_r
+# Function to compute bin volume * n-bar from bin index
+nV = lambda bin, n_r: n_bar*4.*np.pi/3.*(radius(bin+1,n_r)**3.-radius(bin,n_r)**3.)
 
-    # Form Gaunt matrix
-    C_matrix = np.zeros((nlm,nlm,nlm))
+### Now compute analytic randoms for ell=m=0
+# Note that we must include the basis function Y_{00} = 1/sqrt{4 pi}
+n_r_lm = 1.*len(np.unique(bin1_lm))
+RR_analyt = N_gal*nV(bin1_lm,n_r)/np.sqrt(4.*np.pi)
 
-    for l in range(n_ell):
-        pref1 = np.sqrt((2.*l+1.)/(4.*np.pi))
-        for lp in range(n_ell):
-            pref2 = pref1*np.sqrt((2.*lp+1.))
-            for L in range(n_ell):
-                pref3 = pref2*np.sqrt((2.*L+1.))
-                tj1 = wigner_3j(l,lp,L,0,0,0)
-                if tj1==0: continue
-                for m in range(-l,l+1):
-                    for mp in range(-lp,lp+1):
-                        M = m+mp
-                        if np.abs(M)>L: continue
-                        tj2 = tj1*wigner_3j(l,lp,L,m,mp,-M)
-                        if tj2==0: continue
-                        C_matrix[l**2+l+m,lp**2+lp+mp,L**2+L+M] = pref3*tj2*(-1.)**M
+#### Compute xi_lm, including factor of sqrt{4 pi} from Y_00
+# We do not apply any edge-correction, such that zeta = NN_{lm} / RR_{00} * (4 pi)^{1/2}
+# i.e. we assume R_{00} = 0 for (lm) > (00)
+# the (4 pi) factor comes from the Y_{00} basis function.
+xi_lm = NN_lm/RR_analyt*np.sqrt(4.*np.pi)
 
-    # Save matrix to file
-    np.save(coupling_file,C_matrix)
-    print("\nSaved coupling matrix to %s"%coupling_file)
-
-#### Edge-correct xi_lm
-
-# First define f_array as RR_lm / RR_00
-f_array = RR_lm[:,:]/RR_lm[0,:]
-
-# Form relevant coupling matrix
-coupling_matrix = np.zeros((nlm,nlm,n_r))+0.j
-
-for n in range(nlm):
-    for Ni in range(nlm):
-        tmp_sum = 0.
-        for n_p in range(nlm):
-            tmp_sum += C_matrix[n,n_p,Ni]*f_array[n_p]
-        coupling_matrix[n,Ni,:] = tmp_sum
-
-xi_lm = np.zeros_like(NN_lm)
-for i in range(len(NN_lm[0])):
-    xi_lm[:,i] = np.matmul(np.linalg.inv(coupling_matrix[:,:,i]),NN_lm[:,i]/RR_lm[0,i])
-
-print("Computed edge-corrected xi_lm multipoles after %.2f seconds"%(time.time()-init))
+print("Computed periodic xi_lm multipoles after %.2f seconds"%(time.time()-init))
 
 #################### COMPUTE XI_{LML'M'} ####################
 
-#### Load in RRR_{lml'm'} piece
-R_file = inputs+'.r_2pcf_mult2.txt'
-countsR = np.loadtxt(R_file,skiprows=8) # skipping rows with radial bins
-l1_lmlm, m1_lmlm, l2_lmlm, m2_lmlm = np.asarray(countsR[:,:4],dtype=int).T
-bin1_lmlm, bin2_lmlm = np.asarray(np.loadtxt(R_file,skiprows=6,max_rows=2),dtype=int)
-RRR_lmlm = countsR[:,4::2]+1.0j*countsR[:,5::2]
+#### Load in first RNN_{lml'm'} piece to get bins
+tmp_file = inputs+'.n00_2pcf_mult2.txt'
+counts_tmp = np.loadtxt(tmp_file,skiprows=8) # skipping rows with radial bins
+l1_lmlm, m1_lmlm, l2_lmlm, m2_lmlm = np.asarray(counts_tmp[:,:4],dtype=int).T
+bin1_lmlm, bin2_lmlm = np.asarray(np.loadtxt(tmp_file,skiprows=6,max_rows=2),dtype=int)
 
 assert len(np.unique(l1_lmlm))==n_ell
 assert len(np.unique(bin1_lm))==n_r
@@ -136,46 +99,27 @@ countsN_all = np.asarray(countsN_all)
 assert len(countsN_all)==N_files
 RNN_lmlm = np.mean(countsN_all,axis=0)*-1. # add -1 due to weight inversion
 
-if len(outRcoupling)>0 and os.path.exists(outRcoupling):
-    print("Loading RRR coupling matrix from file!")
-    coupling_matrix2 = np.load(outRcoupling)
+# Compute collapsed indices
+index1 = l1_lmlm**2+l1_lmlm+m1_lmlm
+index2 = l2_lmlm**2+l2_lmlm+m2_lmlm
 
-else:
-    # Compute collapsed indices
-    index1 = l1_lmlm**2+l1_lmlm+m1_lmlm
-    index2 = l2_lmlm**2+l2_lmlm+m2_lmlm
+### Now compute analytic randoms for ell=m=ell'=m'=0
+# Note that we must include the basis function Y_{00}Y_{00} = 1/(4 pi)
+n_r_lm = 1.*len(np.unique(bin1_lmlm))
+RRR_analyt = N_gal*nV(bin1_lmlm,n_r)*nV(bin2_lmlm,n_r)/(4.*np.pi)
 
-    # Define f2_array (from RRR_{lml'm'} / RRR_0000)
-    f2_array = RRR_lmlm[:,:]/RRR_lmlm[0,:]
+#### Compute xi_lml'm', including factor of 4 pi from Y_00 Y_00
+# We do not apply any edge-correction, such that zeta = (RNN)_{lml'm'} / RRR_{0000} * (4 pi)
+# i.e. we assume R_{lml'm'} = 0 for (lml'm') > (0000)
+# the (4 pi) factor comes from the Y_{00}Y_{00} basis function.
+xi_lmlm = RNN_lmlm/RRR_analyt*4.*np.pi
 
-    # Form coupling matrix
-    coupling_matrix2 = np.zeros((nlm**2,nlm**2,len(RRR_lmlm[0])))+0.j
-
-    C_mat1 = C_matrix[index1][:,:,index1] # compute C_{l1,:,L1}^{m1,:,M1} for all n1, N1 arrays
-    C_mat2 = C_matrix[index2][:,:,index2] # compute C_{l2,:,L2}^{m2,:,M2} for all n2, N2 arrays
-
-    print("Computing xi_{lml'm'} edge-correction matrix")
-    for prime_index in range(nlm**2):
-        if prime_index%10==0: print("Accumulating primed-index %d of %d"%(prime_index+1,nlm**2))
-        this_C1 = C_mat1[:,index1[prime_index],:]
-        this_C2 = C_mat2[:,index2[prime_index],:]
-        coupling_matrix2[:,:,:] += (this_C1*this_C2)[:,:,np.newaxis]*f2_array[prime_index]
-
-    if len(outRcoupling)>0:
-        print("Saving RRR coupling matrix to file")
-        np.save(outRcoupling,coupling_matrix2)
-    
-print("Performing edge-correction")
-xi_lmlm = np.zeros_like(RNN_lmlm)
-for i in range(len(RNN_lmlm[0])):
-    xi_lmlm[:,i] = np.matmul(np.linalg.inv(coupling_matrix2[:,:,i]),RNN_lmlm[:,i]/RRR_lmlm[0,i])
-
-print("Computed edge-corrected xi_{lml'm'} multipoles after %.2f seconds"%(time.time()-init))
+print("Computed periodic xi_{lml'm'} multipoles after %.2f seconds"%(time.time()-init))
 
 #################### COMBINE TO OBTAIN 4PCF ####################
 
 #### Compute 4PCF coupling matrix if necessary
-coupling_file = get_script_path()+'/coupling_matrices/disconnected_4pcf_coupling_lmax%d.npy'%lmax
+coupling_file = get_script_path()+'/../coupling_matrices/disconnected_4pcf_coupling_lmax%d.npy'%lmax
 try:
     fourpcf_coupling = np.load(coupling_file)
     print("Loading 4PCF coupling matrix from file")
@@ -201,9 +145,9 @@ except IOError:
 ### Define an output matrix shape and arrays
 ct_ell = 0
 ell_1, ell_2, ell_3 = [],[],[]
-for l1 in range(lmax):
-    for l2 in range(lmax):
-        for l3 in range(lmax):
+for l1 in range(lmax+1):
+    for l2 in range(lmax+1):
+        for l3 in range(lmax+1):
             if pow(-1.,l1+l2+l3)==-1: continue
             if l3<np.abs(l1-l2): continue
             if l3>l1+l2: continue
