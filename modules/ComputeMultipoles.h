@@ -34,7 +34,9 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
         if (ne==0) printf("# Running single threaded.\n");
 #endif
     if(int(ne%1000)==0) printf("Computing cell %d of %d on thread %d\n",ne,grid->nf,thread);
+#ifdef FIVEPCF
     else if (int(ne%100)==0) printf("Computing cell %d of %d on thread %d\n",ne,grid->nf,thread);
+#endif
     	// Loop over primary cells.
 	Cell primary = grid->c[n];
 	integer3 prim_id = grid->cell_id_from_1d(n);
@@ -132,11 +134,16 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
       if(thread==0) powertime.Start();
 	    npcf[thread].add_to_power(mult, primary_w);
       if(thread==0) powertime.Stop();
+#ifdef FIVEPCF
 if (int(ne%100)==0) printf("Powertime: %6.3f\n", powertime.Elapsed());
+#endif
 
 	} // Done with this primary particle
     } // Done with this primary cell, end of omp pragma
-    if (_gpumode > 0) npcf[0].free_gpu_memory();
+    if (_gpumode > 0) {
+      if (!_gpumemcpy) npcf[0].do_copy_memory();  //if not memcpy, must now copy back to host
+      npcf[0].free_gpu_memory(); //free all GPU memory
+    }
 
 #ifndef OPENMP
 #ifdef AVX

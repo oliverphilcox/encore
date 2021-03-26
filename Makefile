@@ -7,8 +7,9 @@ NVCCFLAGS = -ccbin g++   -m64    -gencode arch=compute_61,code=sm_61 -gencode ar
 # FOR LINUX MACHINES WITH g++
 CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall -pg
 #Note - will have to figure out OPENMP vs CUDA - e.g. don't want 24 threads trying to each start a CUDA kernel
-#CXXFLAGS = -O3 -DOPENMP -DFOURPCF -DFIVEPCF ${CUFLAGS} 
-CXXFLAGS = -O3 -DFOURPCF -DFIVEPCF ${CUFLAGS} 
+#CXXFLAGS = -O3 -DOPENMP -DFOURPCF -DFIVEPCF 
+CXXFLAGS = -O3 -DGPU -DFOURPCF -DFIVEPCF ${CUFLAGS} 
+#CXXFLAGS = -O3 -DGPU -DFOURPCF ${CUFLAGS}
 
 # FOR LINUX MACHINES WITH INTEL
 # here optimized for machines with AVX512 registers
@@ -18,7 +19,8 @@ CXXFLAGS = -O3 -DFOURPCF -DFIVEPCF ${CUFLAGS}
 #-qopt-report=5 -qopt-report-phase=vec -inline-level=0 -qopt-report-filter="NPCF.h,598-683" -qopt-report-file=$@.optrpt
 
 #MODES = -DOPENMP -DFOURPCF -DFIVEPCF
-MODES = -DFOURPCF -DFIVEPCF
+MODES = -DGPU -DFOURPCF -DFIVEPCF
+#MODES = -DGPU -DFOURPCF
 # Add the -DPERIODIC flag to run with periodic boundary conditions
 # Add the -DFOURPCF flag to include the four-point correlator
 # Add the -DFIVEPCF flag to include the five-point correlator
@@ -31,6 +33,8 @@ AVX = -DAVX
 ###############
 
 default: gpufuncs encore encoreAVX
+
+cpu: encore encoreAVX
 
 CMASM.o:
 	$(CC) -DAVXMULTIPOLES generateCartesianMultipolesASM.c
