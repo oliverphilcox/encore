@@ -8,13 +8,12 @@ CXXFLAGS = -O3
 
 # FOR LINUX MACHINES WITH INTEL
 # here optimized for machines with AVX512 registers
-#CXX = icpc
-#CXXFLAGS= -O2 -xCORE-AVX512 -qopt-zmm-usage=high -qopenmp -g
-# extra code for parallelization reports
-#-qopt-report=5 -qopt-report-phase=vec -inline-level=0 -qopt-report-filter="NPCF.h,598-683" -qopt-report-file=$@.optrpt
+# CXX = icpc
+# CXXFLAGS= -O2 -xCORE-AVX512 -qopt-zmm-usage=high -qopenmp -g
 
-MODES = -DOPENMP -DFOURPCF
+MODES =  -DOPENMP -DFOURPCF -DDISCONNECTED
 # Add the -DPERIODIC flag to run with periodic boundary conditions
+# Add the -DDISCONNECTED flag to include the disconnected 4PCF contributions
 # Add the -DFOURPCF flag to include the four-point correlator
 # Add the -DFIVEPCF flag to include the five-point correlator
 # Add the -DSIXPCF flag to include the six-point correlator

@@ -18,7 +18,7 @@
 
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 // We output only NPCF with bin1 < bin2 < bin3 etc. to avoid degeneracy and the bins including zero separations
-#define NBIN 20
+#define NBIN 10
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 5 for 5PCF, or 3 for 6PCF.
@@ -124,7 +124,7 @@ class Pairs {
       if (mkdir(out_dir,S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)==0){
             printf("\nCreating output directory\n");
         }
-      
+
       // First create output files
        char out_name[1000];
         snprintf(out_name, sizeof out_name, "output/%s_2pcf.txt", out_string);
@@ -403,21 +403,25 @@ int main(int argc, char *argv[]) {
     WeightsReadTime.Start();
 
     load_3pcf_coupling(); // load matrix of weights from file into the `threepcf_coupling` array
-    generate_3pcf_weights(); // generate the 3pcf weights for this specific LMAX, including normalization factors. They are stored in weights3pcf
+    generate_3pcf_weights(); // generate the 3pcf weights for this specific LMAX, including normalization factors. They are stored in weight3pcf
 
 #ifdef FOURPCF
     load_4pcf_coupling(); // load matrix of weights from file into the `fourpcf_coupling` array
-    generate_4pcf_weights(); // generate the 4pcf weights for this specific LMAX, including normalization factors. They are stored in weights4pcf1 and weights4pcf2
+    generate_4pcf_weights(); // generate the 4pcf weights for this specific LMAX, including normalization factors. They are stored in weight4pcf
+#endif
+
+#ifdef DISCONNECTED
+  generate_discon_weights(); // generate the disconnected weights for this specific LMAX, including normalizations. They are stored in weightdiscon1 and weightdiscon2
 #endif
 
 #ifdef FIVEPCF
     load_5pcf_coupling(); // load matrix of weights from file into the `fivepcf_coupling` array
-    generate_5pcf_weights(); // generate the 5pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
+    generate_5pcf_weights(); // generate the 5pcf weights for this specific LMAX, including normalization factors. They are stored in weight5pcf
 #endif
 
 #ifdef SIXPCF
     load_6pcf_coupling(); // load matrix of weights from file into the `sixpcf_coupling` array
-    generate_6pcf_weights(); // generate the 6pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
+    generate_6pcf_weights(); // generate the 6pcf weights for this specific LMAX, including normalization factors. They are stored in weight6pcf
 #endif
 
     WeightsReadTime.Stop();
@@ -453,6 +457,11 @@ int main(int argc, char *argv[]) {
 
     zero_power();
     fflush(NULL);
+
+    #ifdef DISCONNECTED
+    // update some parameters
+    for(int i=0;i<MAXTHREAD;i++) npcf[i].load_params(qbalance, qinvert);
+    #endif
 
     Prologue.Stop();
 
