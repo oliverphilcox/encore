@@ -109,7 +109,7 @@ for N in Ns:
 
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:
@@ -152,7 +152,7 @@ for N in Ns:
 
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:
@@ -196,7 +196,7 @@ for N in Ns:
 
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:
@@ -242,7 +242,7 @@ for N in Ns:
 
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:

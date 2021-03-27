@@ -134,6 +134,9 @@ if N==6:
     # trim down to remove trivial elements
     WeightsNPCF = WeightsNPCF[:index]
 
-outfile = 'coupling_matrices/weights_%dpcf_LMAX%d.txt'%(N,LMAX)
+def get_script_path():
+    return os.path.dirname(os.path.realpath(sys.argv[0]))
+
+outfile = get_script_path()+'/../coupling_matrices/weights_%dpcf_LMAX%d.txt'%(N,LMAX)
 np.savetxt(outfile,WeightsNPCF)
 print("Coefficients saved to %s"%outfile)
