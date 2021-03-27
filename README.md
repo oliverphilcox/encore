@@ -7,6 +7,7 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - *(Optional)*: AVX compatibility.
 - *(Optional)*: OpenMP for multiprocessing.
 - *(Optional*): Python (tested with 2.7 & 3.6) with numpy and sympy installed for file summation and edge correction.
+- *(Optional*): CUDA (7.0 or higher)
 
 #### Authors:
 - Oliver Philcox (Princeton / IAS, [ohep2@cantab.ac.uk](mailto:ohep2@cantab.ac.uk))
@@ -23,6 +24,7 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - The output products are stored in the ```output/``` directory as ```.txt``` files. The format is described in the individual files: in general, they are arrays with the column and row specifying the radial and angular bin respectively. Note that we only store parity even correlators with multipoles satisfying the triangle conditions and with ```BIN1 < BIN2 < BIN3``` etc.
 - Generally, one will run the code on ~ 30 (data-random) files, the corresponding (random-random) files, then combine to obtain the NPCF estimates. For (data-random) inputs, the randoms should have negative weights, such that the total summed weight is zero. The weights can be balanced and inverted using the optional parameters. Combination can be done using the ```python/combine_files``` scripts; we refer the use to the ```run_npcf.csh``` script for full details.
 - For advanced usage, there is an option to store the multipoles of positively weighted primary particles. If multiple (D-R) sets are computed in series, this avoids the multipoles of the data being recomputed each time. More information regarding this is found in the comment in the ```modules/StoreMultipoles.h``` script.
+- To enable CUDA code on the GPU, add -DGPU to MODES in the Makefile and add ${CUFLAGS} to CXXFLAGS and ```make clean; make gpu```
 - We additionally include the functionality to compute the disconnected (Gaussian) contribution to the 4PCF at the estimator level. This is activated using the ```-DDISCONNECTED``` flag in the Makefile, and generates an additional two files ```_2pcf_mult1.txt``` and ```_2pcf_mult2.txt```. These can be analyzed using the ```python/combine_disconnected_files``` routines. Similar functionality for the higher-point functions will be added in later releases.
 
 #### Main Options:
@@ -41,3 +43,6 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - ```-ran```: Integer: if specified, ignore any input file and throw this many points in a cube at random.
 - ```-box```: If drawing particles at random, this sets the periodic size of the computational domain (default: 400).
 - ```-scale```: Dilate the input positions by this factor (default: 1).
+- ```-gpu n```: gpu mode => 0 = CPU, 1 = GPU kernel 1 (one thread per array element); 2 = GPU kernel 2 (one thread per inner loop operation)
+- ```-float```: in GPU mode, use floats on the GPU for speed
+- ```-mixed```: in GPU mode, use mixed precision on the GPU with ALMs in float space and accumulations in double

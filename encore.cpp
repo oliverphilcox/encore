@@ -35,8 +35,19 @@ typedef unsigned long long int uint64;
 // Only double precision has been tested.
 // Note that the AVX multipole code is always double precision.
 typedef double Float;
+//typedef float Float;
 typedef double3 Float3;
 typedef std::complex<double> Complex;
+//typedef std::complex<float> Complex;
+
+
+//0 = CPU
+//1 = GPU primary kernel
+//2, higher = alternate kernels
+short _gpumode = 0;
+bool _gpumemcpy = false; //if true, copy memory every kernel call
+bool _gpufloat = false;
+bool _gpumixed = false;
 
 // We need a vector floor3 function
 Float3 floor3(float3 p) {
@@ -246,6 +257,9 @@ void usage() {
     fprintf(stderr, "The intention is to allow re-use of DD counts while changing the DR and RR counts.\n");
     fprintf(stderr, "    -balance: Rescale the negative weights so that the total weight is zero.\n");
     fprintf(stderr, "    -invert: Multiply all the weights by -1.\n");
+    fprintf(stderr, "    -gpu: GPU mode => 0 = CPU, 1 = GPU, 2+ = GPU alternate kernel\n");
+    fprintf(stderr, "    -float: GPU mode => use floats to speed up\n");
+    fprintf(stderr, "    -mixed: GPU mode => use mixed precision - alms are floats, accumulation is doubles\n");
 
     exit(1);
     return;
@@ -314,6 +328,10 @@ int main(int argc, char *argv[]) {
 		make_random=1;
 	    }
 	else if (!strcmp(argv[i],"-def")||!strcmp(argv[i],"-default")) { fname = NULL; }
+	else if (!strcmp(argv[i],"-gpu")) _gpumode = atoi(argv[++i]);
+        else if (!strcmp(argv[i],"-memcpy")) _gpumemcpy = true;
+        else if (!strcmp(argv[i],"-float")) _gpufloat = true;
+        else if (!strcmp(argv[i],"-mixed")) _gpumixed = true;
 	else {
 	    fprintf(stderr, "Don't recognize %s\n", argv[i]);
 	    usage();
