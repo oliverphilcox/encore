@@ -702,7 +702,8 @@ class NPCF {
 
       if (!_gpumemcpy) {
         //if not using memcpy, allocate pointers on device here
-        int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+        //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+        int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
         if (_gpufloat) {
           //allocate float arrays and cast as floats when copying
           gpu_allocate_weight4pcf(&f_weight4pcf, weight4pcf, size_w);
