@@ -131,7 +131,20 @@ for N in Ns:
             if l>=5+N: continue
             zfile.write(line)
         for a in range(len(zeta)):
-            zfile.write("%d\t"%ell_1[a])
+            if N>2:
+                zfile.write("%d\t"%ell_1[a])
+            if N>3:
+                zfile.write("%d\t"%ell_2[a])
+            if N>4:
+                zfile.write("%d\t"%ell_12[a])
+            if N>3:
+                zfile.write("%d\t"%ell_3[a])
+            if N>5:
+                zfile.write("%d\t"%ell_123[a])
+            if N>4:
+                zfile.write("%d\t"%ell_4[a])
+            if N>5:
+                zfile.write("%d\t"%ell_5[a])
             for b in range(len(zeta[a])):
                 zfile.write("%.8e\t"%zeta[a,b])
             zfile.write("\n")
