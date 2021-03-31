@@ -882,11 +882,14 @@ class NPCF {
 
       if (!_gpumemcpy) {
         //if not using memcpy, allocate pointers on device here
-        int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+        int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+        //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
         if (_gpufloat) {
           //allocate float arrays and cast as floats when copying
+
           gpu_allocate_weight4pcf(&f_weight4pcf, weight4pcf, size_w);
           gpu_allocate_fourpcf(&f_fourpcf, fourpcf, nell4*N4PCF);
+
         } else {
           //normal mode - allocate GPU arrays and copy
           gpu_allocate_weight4pcf(&d_weight4pcf, weight4pcf, size_w);
@@ -915,7 +918,7 @@ class NPCF {
               //GPU thread will then loop over ms
               lut4_zeta[iouter4] = zeta_index;
               //loop over ms - need to update n so that LUT has correct
-              //n_init for all threads 
+              //n_init for all threads
               for(int m1=-l1; m1<=l1; m1++){
                 // Iterate over all m2 (including negative)
                 for(int m2=-l2; m2<=l2; m2++){
@@ -983,7 +986,8 @@ class NPCF {
       //execute GPU kernel
       if (_gpufloat) {
         //float kernel
-        gpu_add_to_power4_float(f_fourpcf, f_weight4pcf, &(alm[0][0]),
+
+      gpu_add_to_power4_float(f_fourpcf, f_weight4pcf, &(alm[0][0]),
         	&(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_n,
         	lut4_zeta, lut4_i, lut4_j, lut4_k,
         	(float)wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
@@ -999,7 +1003,7 @@ class NPCF {
         	wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
       }
     } else if (_gpumode == 2) {
-      //execute alternate GPU kernel 
+      //execute alternate GPU kernel
       if (_gpufloat) {
         gpu_add_to_power4_orig_float(f_fourpcf, f_weight4pcf, &(alm[0][0]),
                 &(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_m1,
@@ -1141,7 +1145,7 @@ class NPCF {
               for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) {
                 // Skip any odd multipoles with odd parity
                 if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
-  
+
                 for(int m1=-l1; m1<=l1; m1++){
                   // Iterate over all m2 (including negative)
                   for(int m2=-l2; m2<=l2; m2++){
@@ -1181,9 +1185,9 @@ class NPCF {
         //allocate float arrays and cast as floats when copying
         gpu_allocate_weight5pcf(&f_weight5pcf, weight5pcf, size_w);
         gpu_allocate_fivepcf(&f_fivepcf, fivepcf, nell5*N5PCF);
-      } else { 
+      } else {
 	//normal mode - allocate GPU arrays and copy
-        gpu_allocate_weight5pcf(&d_weight5pcf, weight5pcf, size_w); 
+        gpu_allocate_weight5pcf(&d_weight5pcf, weight5pcf, size_w);
         gpu_allocate_fivepcf(&d_fivepcf, fivepcf, nell5*N5PCF);
       }
     }
@@ -1213,7 +1217,7 @@ class NPCF {
 	        //GPU thread will then loop over ms
                 lut5_zeta[iouter5] = zeta_index;
 	        //loop over ms - need to update n so that LUT has correct
-	        //n_init for all threads 
+	        //n_init for all threads
                 for(int m1=-l1; m1<=l1; m1++){
                   // Iterate over all m2 (including negative)
                   for(int m2=-l2; m2<=l2; m2++){
@@ -1306,6 +1310,7 @@ class NPCF {
     //execute GPU kernel
     if (_gpufloat) {
       //float kernel
+
       gpu_add_to_power5_float(f_fivepcf, f_weight5pcf, &(alm[0][0]),
         &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
@@ -1322,12 +1327,12 @@ class NPCF {
         wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
     } else {
       gpu_add_to_power5(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-	&(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, 
+	&(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
 	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
 	wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
     }
   } else if (_gpumode == 2) {
-    //execute alternate GPU kernel 
+    //execute alternate GPU kernel
     if (_gpufloat) {
       gpu_add_to_power5_orig_float(f_fivepcf, f_weight5pcf, &(alm[0][0]),
         &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4,
@@ -1348,7 +1353,7 @@ class NPCF {
         wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
     } else {
       gpu_add_to_power5_orig(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-	&(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4, 
+	&(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4,
 	lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);

@@ -1,6 +1,6 @@
 # encore: Efficient N-point Correlator Estimation
 
-C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian et al. (in prep.), and uses their conventions. This currently features support for the isotropic 2PCF, 3PCF, 4PCF, 5PCF and 6PCF, with the option to subtract the Gaussian 4PCF contributions at the estimator level. For the 4PCF, 5PCF and 6PCF algorithms, the runtime is dominated by sorting the spherical harmonics into bins, which has complexity O(N_galaxy x N_bins^3 x N_ell^5) [4PCF], O(N_galaxy x N_bins^4 x N_ell^8) [5PCF] or O(N_galaxy x N_bins^5 x N_ell^11) [6PCF]. We caution that the higher-point functions will be necessarily slow to compute unless N_bins and N_ell are small.
+C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time, with optional GPU support. This is based on code by Daniel Eisenstein, implementing the algorithm of Slepian et al. (in prep.), and uses their conventions. This currently features support for the isotropic 2PCF, 3PCF, 4PCF, 5PCF and 6PCF, with the option to subtract the Gaussian 4PCF contributions at the estimator level. For the 4PCF, 5PCF and 6PCF algorithms, the runtime is dominated by sorting the spherical harmonics into bins, which has complexity O(N_galaxy x N_bins^3 x N_ell^5) [4PCF], O(N_galaxy x N_bins^4 x N_ell^8) [5PCF] or O(N_galaxy x N_bins^5 x N_ell^11) [6PCF]. We caution that the higher-point functions will be necessarily slow to compute unless N_bins and N_ell are small.
 
 #### Requirements:
 - C++ compiler (tested with g++ 4.8.5)
@@ -43,6 +43,6 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 - ```-ran```: Integer: if specified, ignore any input file and throw this many points in a cube at random.
 - ```-box```: If drawing particles at random, this sets the periodic size of the computational domain (default: 400).
 - ```-scale```: Dilate the input positions by this factor (default: 1).
-- ```-gpu n```: gpu mode => 0 = CPU, 1 = GPU kernel 1 (one thread per array element); 2 = GPU kernel 2 (one thread per inner loop operation)
-- ```-float```: in GPU mode, use floats on the GPU for speed
-- ```-mixed```: in GPU mode, use mixed precision on the GPU with ALMs in float space and accumulations in double
+- ```-gpu n```: gpu mode => 0 = CPU, 1 = GPU kernel 1 (one thread per array element); 2 = GPU kernel 2 (one thread per inner loop operation).
+- ```-float```: In GPU mode, use floats on the GPU for speed.
+- ```-mixed```: In GPU mode, use mixed precision on the GPU with ALMs in float space and accumulations in double.

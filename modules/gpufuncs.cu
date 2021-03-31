@@ -11,10 +11,10 @@ int count = 0;
 __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
 	int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n,
-	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, 
+	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         double wp, int nb, int norder, int nlm, int nouter, int ninner) {
     //thread index i
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
+		int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
     //compute indices for LUTs
     int iouter = i/ninner;
@@ -41,7 +41,7 @@ __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
     thrust::complex<double> alm2 = 0;
     int m3, tmp_lm3;
     double delta;
-    //now loop over ms on this thread
+		//now loop over ms on this thread
     // Iterate over all m1 (including negative)
     for(int m1=-l1; m1<=l1; m1++){
       // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
@@ -60,14 +60,14 @@ __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
         // No conjugates needed for a_l3m3 since we fixed m3>=0!
         // Note we add the coupling weight factor to a_l3m3
         if (m2 < 0) alm2 = alm1w*almconj[j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[j*nlm+tmp_l2+m2];
-        
+
 	//calculate delta
         delta = weight*(alm2*alm[k*nlm+tmp_lm3]).real();
 	//add to this element
 	pcf_element += delta;
       }
     }
-    fourpcf[bin_index] = pcf_element; //copy back to global memory 
+		fourpcf[bin_index] = pcf_element; //copy back to global memory
 }
 
 __global__ void add_to_power4_kernel_float(float *fourpcf, float *weight4pcf,
@@ -129,7 +129,7 @@ __global__ void add_to_power4_kernel_float(float *fourpcf, float *weight4pcf,
         pcf_element += delta;
       }
     }
-    fourpcf[bin_index] = pcf_element; //copy back to global memory 
+    fourpcf[bin_index] = pcf_element; //copy back to global memory
 }
 
 __global__ void add_to_power4_kernel_mixed(double *fourpcf, double *weight4pcf,
@@ -191,7 +191,7 @@ __global__ void add_to_power4_kernel_mixed(double *fourpcf, double *weight4pcf,
         pcf_element += delta;
       }
     }
-    fourpcf[bin_index] = pcf_element; //copy back to global memory 
+    fourpcf[bin_index] = pcf_element; //copy back to global memory
 }
 
 __global__ void add_to_power4_kernel_orig(double *fourpcf, double *weight4pcf,
@@ -216,7 +216,7 @@ __global__ void add_to_power4_kernel_orig(double *fourpcf, double *weight4pcf,
     int tmp_l3 = l3*(l3+1)/2;
     int m1 = lut4_m1[iouter];
     int m2 = lut4_m2[iouter];
-    int n = lut4_n[iouter]; 
+    int n = lut4_n[iouter];
     //calc weight
     double weight = weight4pcf[n];
     //inner loop indices
@@ -256,7 +256,7 @@ __global__ void add_to_power4_kernel_orig_float(float *fourpcf, float *weight4pc
     int tmp_l3 = l3*(l3+1)/2;
     int m1 = lut4_m1[iouter];
     int m2 = lut4_m2[iouter];
-    int n = lut4_n[iouter]; 
+    int n = lut4_n[iouter];
     //calc weight
     float weight = weight4pcf[n];
     //inner loop indices
@@ -296,7 +296,7 @@ __global__ void add_to_power4_kernel_orig_mixed(double *fourpcf, double *weight4
     int tmp_l3 = l3*(l3+1)/2;
     int m1 = lut4_m1[iouter];
     int m2 = lut4_m2[iouter];
-    int n = lut4_n[iouter]; 
+    int n = lut4_n[iouter];
     //calc weight
     double weight = weight4pcf[n];
     //inner loop indices
@@ -381,7 +381,7 @@ __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf, thrust
         }
       }
     }
-    fivepcf[bin_index] = pcf_element; //copy back to global memory 
+    fivepcf[bin_index] = pcf_element; //copy back to global memory
 }
 
 __global__ void add_to_power5_kernel_float(float *fivepcf, float *weight5pcf, thrust::complex<float>* alm,
@@ -451,7 +451,7 @@ __global__ void add_to_power5_kernel_float(float *fivepcf, float *weight5pcf, th
         }
       }
     }
-    fivepcf[bin_index] = pcf_element; 
+    fivepcf[bin_index] = pcf_element;
 }
 
 __global__ void add_to_power5_kernel_mixed(double *fivepcf, double *weight5pcf, thrust::complex<float>* alm,
@@ -521,7 +521,7 @@ __global__ void add_to_power5_kernel_mixed(double *fivepcf, double *weight5pcf, 
         }
       }
     }
-    fivepcf[bin_index] = pcf_element; 
+    fivepcf[bin_index] = pcf_element;
 }
 
 __global__ void add_to_power5_kernel_orig(double *fivepcf, double *weight5pcf, thrust::complex<double>* alm,
@@ -712,7 +712,7 @@ void gpu_allocate_weight4pcf(float **p_weight4pcf, double *weight4pcf, int size)
 
 void copy_fourpcf(float **p_fourpcf, double *fourpcf, int size) {
   float *f_fourpcf = *(p_fourpcf);
-  for (int i = 0; i < size; i++) fourpcf[i] = (double)f_fourpcf[i];
+	for (int i = 0; i < size; i++) fourpcf[i] = (double)f_fourpcf[i];
 }
 
 void gpu_free_luts4(int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n,
@@ -851,18 +851,19 @@ void gpu_add_to_power4(double *d_fourpcf, double *d_weight4pcf, Complex* alm,
 
 if (count == 0) {
 count++;
-std::cout << "Threads = " << threads << std::endl;
+std::cout << "GPU Threads = " << threads << std::endl;
 }
 
-  add_to_power4_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
+	add_to_power4_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
         d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2,
-        lut4_l3, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k, 
+        lut4_l3, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
         wp, nb, norder, nlm, nouter, ninner);
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
   cudaFree(d_alm);
   cudaFree(d_almconj);
+
 }
 
 //float version of main kernel
@@ -1043,7 +1044,7 @@ void gpu_add_to_power5(double *d_fivepcf, double *d_weight5pcf, Complex* alm,
 
   add_to_power5_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, d_alm, d_almconj, lut5_l1, lut5_l2,
-        lut5_l12, lut5_l3, lut5_l4, 
+        lut5_l12, lut5_l3, lut5_l4,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nb, norder, nlm, nouter, ninner);
 
@@ -1127,8 +1128,8 @@ void gpu_add_to_power5_with_memcpy(double *fivepcf, double *weight5pcf, Complex*
   size_t size_w = sizeof(double)*(norder+1)*(norder+1)*(norder+1)*(norder+1)*(2*norder+1)*(norder+1)*(norder+1)*(norder+1);
   size_t size_5 = sizeof(double)*nell5*ninner;
 
-  cudaMalloc(&d_fivepcf, size_5); 
-  cudaMalloc(&d_weight5pcf, size_w); 
+  cudaMalloc(&d_fivepcf, size_5);
+  cudaMalloc(&d_weight5pcf, size_w);
   cudaMalloc(&d_alm, nb*nlm*sizeof(thrust::complex<double>));
   cudaMalloc(&d_almconj, nb*nlm*sizeof(thrust::complex<double>));
 
@@ -1144,7 +1145,7 @@ void gpu_add_to_power5_with_memcpy(double *fivepcf, double *weight5pcf, Complex*
 
   add_to_power5_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, d_alm, d_almconj, lut5_l1, lut5_l2,
-        lut5_l12, lut5_l3, lut5_l4, 
+        lut5_l12, lut5_l3, lut5_l4,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nb, norder, nlm, nouter, ninner);
 
@@ -1268,8 +1269,8 @@ void gpu_add_to_power5_orig_with_memcpy(double *fivepcf, double *weight5pcf, Com
   size_t size_w = sizeof(double)*(norder+1)*(norder+1)*(norder+1)*(norder+1)*(2*norder+1)*(norder+1)*(norder+1)*(norder+1);
   size_t size_5 = sizeof(double)*nell5*ninner;
 
-  cudaMalloc(&d_fivepcf, size_5); 
-  cudaMalloc(&d_weight5pcf, size_w); 
+  cudaMalloc(&d_fivepcf, size_5);
+  cudaMalloc(&d_weight5pcf, size_w);
   cudaMalloc(&d_alm, nb*nlm*sizeof(thrust::complex<double>));
   cudaMalloc(&d_almconj, nb*nlm*sizeof(thrust::complex<double>));
 
