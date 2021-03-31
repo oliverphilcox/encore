@@ -9,6 +9,10 @@
 # To run in GPU mode, -DGPU must be specified and we must add ${CUFLAGS} to CXX flags.
 #
 ####################################################################################################################
+=======
+# COMPILATION FOR MACS (no OpenMP)
+#CXXFLAGS = -O2 -Wall
+#CXXFLAGS = -g -Wall
 
 MODES = -DFOURPCF -DFIVEPCF -DGPU
 # Add the -DPERIODIC flag to run with periodic boundary conditions

@@ -882,8 +882,13 @@ class NPCF {
 
       if (!_gpumemcpy) {
         //if not using memcpy, allocate pointers on device here
+<<<<<<< HEAD
         int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
         //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+=======
+        //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+        int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+>>>>>>> cc360a7ac592f67236b4cce7e2567608a8416d41
         if (_gpufloat) {
           //allocate float arrays and cast as floats when copying
 
