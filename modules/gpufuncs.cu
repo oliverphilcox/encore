@@ -685,13 +685,21 @@ void gpu_allocate_m_luts4(int **p_lut4_m1, int **p_lut4_m2, int nouter) {
 }
 
 void gpu_allocate_fourpcf(double **p_fourpcf, double *fourpcf, int size) {
-  cudaMalloc(&(*p_fourpcf), size*sizeof(double));
-  cudaMemcpy((*p_fourpcf), fourpcf, size, cudaMemcpyHostToDevice);
+  //cudaMalloc(&(*p_fourpcf), size*sizeof(double));
+  //cudaMemcpy((*p_fourpcf), fourpcf, size, cudaMemcpyHostToDevice);
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_fourpcf), size*sizeof(double));
+  double *d_fourpcf = *(p_fourpcf);
+  for (int i = 0; i < size; i++) d_fourpcf[i] = fourpcf[i];
 }
 
 void gpu_allocate_weight4pcf(double **p_weight4pcf, double *weight4pcf, int size) {
-  cudaMalloc(&(*p_weight4pcf), size*sizeof(double));
-  cudaMemcpy((*p_weight4pcf), weight4pcf, size, cudaMemcpyHostToDevice);
+  //cudaMalloc(&(*p_weight4pcf), size*sizeof(double));
+  //cudaMemcpy((*p_weight4pcf), weight4pcf, size, cudaMemcpyHostToDevice);
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_weight4pcf), size*sizeof(double));
+  double *d_weight4pcf = *(p_weight4pcf);
+  for (int i = 0; i < size; i++) d_weight4pcf[i] = weight4pcf[i];
 }
 
 void copy_fourpcf(double **p_fourpcf, double *fourpcf, int size) {
@@ -770,13 +778,21 @@ void gpu_allocate_m_luts(int **p_lut5_m1, int **p_lut5_m2, int **p_lut5_m3, int 
 
 void gpu_allocate_fivepcf(double **p_fivepcf, double *fivepcf, int size) {
   //*p_fivepcf = (double *)malloc(sizeof(double)*size);
-  cudaMalloc(&(*p_fivepcf), size*sizeof(double));
-  cudaMemcpy((*p_fivepcf), fivepcf, size, cudaMemcpyHostToDevice);
+  //cudaMalloc(&(*p_fivepcf), size*sizeof(double));
+  //cudaMemcpy((*p_fivepcf), fivepcf, size, cudaMemcpyHostToDevice);
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_fivepcf), size*sizeof(double));
+  double *d_fivepcf = *(p_fivepcf);
+  for (int i = 0; i < size; i++) d_fivepcf[i] = fivepcf[i];
 }
 
 void gpu_allocate_weight5pcf(double **p_weight5pcf, double *weight5pcf, int size) {
-  cudaMalloc(&(*p_weight5pcf), size*sizeof(double));
-  cudaMemcpy((*p_weight5pcf), weight5pcf, size, cudaMemcpyHostToDevice);
+  //cudaMalloc(&(*p_weight5pcf), size*sizeof(double));
+  //cudaMemcpy((*p_weight5pcf), weight5pcf, size, cudaMemcpyHostToDevice);
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_weight5pcf), size*sizeof(double));
+  double *d_weight5pcf = *(p_weight5pcf);
+  for (int i = 0; i < size; i++) d_weight5pcf[i] = weight5pcf[i];
 }
 
 void copy_fivepcf(double **p_fivepcf, double *fivepcf, int size) {
@@ -851,7 +867,7 @@ void gpu_add_to_power4(double *d_fourpcf, double *d_weight4pcf, Complex* alm,
 
 if (count == 0) {
 count++;
-std::cout << "Threads = " << threads << std::endl;
+std::cout << "Threads = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
 }
 
   add_to_power4_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
