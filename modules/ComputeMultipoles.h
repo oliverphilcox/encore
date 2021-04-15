@@ -134,9 +134,9 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
       if(thread==0) powertime.Start();
 	    npcf[thread].add_to_power(mult, primary_w);
       if(thread==0) powertime.Stop();
-#ifdef FIVEPCF
-if (int(ne%100)==0) printf("Powertime: %6.3f\n", powertime.Elapsed());
-#endif
+// #ifdef FIVEPCF
+// if (int(ne%100)==0) printf("Powertime: %6.3f\n", powertime.Elapsed());
+// #endif
 
 	} // Done with this primary particle
     } // Done with this primary cell, end of omp pragma

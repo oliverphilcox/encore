@@ -2,6 +2,7 @@
 # This reads in a set of (data-random) and (random) particle counts and uses them to construct the N-point functions, including edge-correction
 # It is designed to be used with the run_npcf.csh script
 # Currently 2PCF, 3PCF, 4PCF, 5PCF and 6PCF are supported. The code will try to load the edge correction coupling matrices from the coupling_matrices/ directory, and recompute them if not (using multithreading to speed up the 9j manipulations)
+# This can handle both odd and even parity NPCFs.
 # The output is saved to the working directory with the same format as the NPCF counts, with the filename ...zeta_{N}pcf.txt
 
 import sys, os
@@ -150,14 +151,26 @@ for N in Ns:
         assert ell_1[0]==ell_2[0]==ell_3[0]
         f_Lambda = countsR/countsR[0] # (first row should be unity!)
 
+        # Decide if we're using all-parity or even-parity multiplets
+        if(np.sum((-1)**(ell_1+ell_2+ell_3)==1)==len(ell_1)):
+            # no odd-parity contributions!
+            all_parity=0
+        else:
+            # contains odd-parity terms!
+            all_parity=1
+
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        if all_parity:
+            input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d_all.npy'%(N,LMAX)
+        else:
+            input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:
             # Compute weights from scratch
-            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads])
+            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads,'%d'%all_parity])
+
         coupling_tmp = np.load(input_weights)
 
         # Define coupling matrix, by iterating over all Lambda triples
@@ -194,14 +207,25 @@ for N in Ns:
         assert ell_1[0]==ell_2[0]==ell_3[0]==ell_12[0]==ell_4[0]
         f_Lambda = countsR/countsR[0] # (first row should be unity!)
 
+        # Decide if we're using all-parity or even-parity multiplets
+        if(np.sum((-1)**(ell_1+ell_2+ell_3+ell_4)==1)==len(ell_1)):
+            # no odd-parity contributions!
+            all_parity=0
+        else:
+            # contains odd-parity terms!
+            all_parity=1
+
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        if all_parity:
+            input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d_all.npy'%(N,LMAX)
+        else:
+            input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:
             # Compute weights from scratch
-            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads])
+            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads,'%d'%all_parity])
         coupling_tmp = np.load(input_weights)
 
         # Define coupling matrix, by iterating over all Lambda triples
@@ -240,14 +264,25 @@ for N in Ns:
         assert ell_1[0]==ell_2[0]==ell_12[0]==ell_3[0]==ell_123[0]==ell_4[0]==ell_5[0]
         f_Lambda = countsR/countsR[0] # (first row should be unity!)
 
+        # Decide if we're using all-parity or even-parity multiplets
+        if(np.sum((-1)**(ell_1+ell_2+ell_3+ell_4+ell_5)==1)==len(ell_1)):
+            # no odd-parity contributions!
+            all_parity=0
+        else:
+            # contains odd-parity terms!
+            all_parity=1
+
         # Load coupling matrix
         LMAX = max(ell_1)
-        input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
+        if all_parity:
+            input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d_all.npy'%(N,LMAX)
+        else:
+            input_weights = get_script_path()+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d.npy'%(N,LMAX)
         if os.path.exists(input_weights):
             print("Loading edge correction weights from file.")
         else:
             # Compute weights from scratch
-            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads])
+            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads,'%d'%all_parity])
         coupling_tmp = np.load(input_weights)
 
         # Define coupling matrix, by iterating over all Lambda triples
