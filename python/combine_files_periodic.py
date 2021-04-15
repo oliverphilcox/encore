@@ -2,6 +2,7 @@
 # This reads in a set of (data-random) particle counts and uses them to construct the N-point functions, assuming a periodic geometry
 # It is designed to be used with the run_npcf.csh script
 # Currently 2PCF, 3PCF, 4PCF, 5PCF and 6PCF are supported, and the R^N random counts are computed analytically.
+# This can handle both odd and even parity NPCFs.
 # The output is saved to the working directory with the same format as the NPCF counts, with the filename ...zeta_{N}pcf.txt
 
 import sys, os
