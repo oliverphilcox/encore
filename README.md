@@ -53,5 +53,3 @@ The *encore* algorithm and code has been used in the following publications:
 - "Efficient Computation of N-point Correlation Functions in D Dimensions", Philcox & Slepian (2021, [arXiv](https://arxiv.org/abs/2106.10278))
 - "Analytic Gaussian Covariance Matrices for Galaxy N-Point Correlation Functions", Hou et al. (2021, [arXiv](https://arxiv.org/abs/2108.01714))
 - "A First Detection of the Connected 4-Point Correlation Function of Galaxies Using the BOSS CMASS Sample", Philcox et al. (2021, [arXiv](https://arxiv.org/abs/2108.01670))
-
-2108.01670
