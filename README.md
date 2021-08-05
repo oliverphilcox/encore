@@ -49,7 +49,7 @@ C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey ge
 
 #### Publications:
 The *encore* algorithm and code has been used in the following publications:
-- "encore: Estimating Galaxy N-point Correlation Functions in O(N^2) Time", Philcox et al. (2021, [arXiv](https://arxiv.org/abs/2105.08722, MNRAS))
+- "encore: Estimating Galaxy N-point Correlation Functions in O(N^2) Time", Philcox et al. (2021, [arXiv](https://arxiv.org/abs/2105.08722), MNRAS)
 - "Efficient Computation of N-point Correlation Functions in D Dimensions", Philcox & Slepian (2021, [arXiv](https://arxiv.org/abs/2106.10278))
 - "Analytic Gaussian Covariance Matrices for Galaxy N-Point Correlation Functions", Hou et al. (2021, [arXiv](https://arxiv.org/abs/2108.01714))
 - "A First Detection of the Connected 4-Point Correlation Function of Galaxies Using the BOSS CMASS Sample", Philcox et al. (2021, [arXiv](https://arxiv.org/abs/2108.01670))
