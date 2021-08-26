@@ -53,7 +53,7 @@ file, followed by w<0 particles.  And the error checking of this assumption is p
 class StoreMultipoles {
   private:
     Float *m[NBIN];    // Each is a flattened array [np_pos][NMULT]
-    uint64 *count;    // Flattened array [np_pos][NBIN]
+    int *count;    // Flattened array [np_pos][NBIN]
     int np_pos;
   public:
     Float *xi0, *xi2;   // Flattened arrays [NBIN]
@@ -62,11 +62,11 @@ class StoreMultipoles {
 	np_pos = _np_pos;
 	for (int b=0;b<NBIN;b++)
 	    m[b] = (Float *)malloc(sizeof(Float)*np_pos*NMULT);
-        count = (uint64 *)malloc(sizeof(uint64)*np_pos*NBIN);
+        count = (int *)malloc(sizeof(int)*np_pos*NBIN);
         xi0 = (Float *)malloc(sizeof(Float)*NBIN);
         xi2 = (Float *)malloc(sizeof(Float)*NBIN);
 	printf("# Allocating %6.3f MB\n",
-		(sizeof(Float)*np_pos*NMULT*NBIN+sizeof(uint64)*np_pos*NBIN)/1024.0/1024.0);
+		(sizeof(Float)*np_pos*NMULT*NBIN+sizeof(int)*np_pos*NBIN)/1024.0/1024.0);
     }
     ~StoreMultipoles() {
 	for (int b=0;b<NBIN;b++) free(m[b]);
@@ -86,7 +86,7 @@ class StoreMultipoles {
 	fwrite((void *)xi2, sizeof(Float), NBIN, fp);
 	for (int b=0;b<NBIN;b++)
 	    fwrite((void *)m[b], sizeof(Float), np_pos*NMULT, fp);
-	fwrite((void *)count, sizeof(uint64),  np_pos*NBIN, fp);
+	fwrite((void *)count, sizeof(int),  np_pos*NBIN, fp);
 	fclose(fp);
 	printf("# Saving counts of %d objects to file: %s\n", np_pos, fname);
         return;
@@ -112,7 +112,7 @@ class StoreMultipoles {
 	    obj = fread((void *)m[b], sizeof(Float), np_pos*NMULT, fp);
 	    assert(obj == (size_t)np_pos*NMULT);
 	}
-	obj = fread((void *)count, sizeof(uint64),  np_pos*NBIN, fp);
+	obj = fread((void *)count, sizeof(int),  np_pos*NBIN, fp);
 	assert(obj == (size_t)np_pos*NBIN);
 	fclose(fp);
 	printf("# Successfully loaded counts of %d objects from file: %s\n", np_pos, fname);
@@ -124,7 +124,7 @@ class StoreMultipoles {
 	return m[bin]+pid*NMULT;
     }
 
-    uint64 *fetchC(int pid, int bin) {
+    int *fetchC(int pid, int bin) {
 	// Return a pointer to the count variable for this particle and bin
 	return count+pid*NBIN+bin;
     }

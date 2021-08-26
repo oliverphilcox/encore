@@ -18,7 +18,7 @@
 
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 // We output only NPCF with bin1 < bin2 < bin3 etc. to avoid degeneracy and the bins including zero separations
-#define NBIN 10
+#define NBIN 20
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 5 for 5PCF, or 3 for 6PCF.
@@ -45,7 +45,6 @@ typedef std::complex<double> Complex;
 //1 = GPU primary kernel
 //2, higher = alternate kernels
 short _gpumode = 0;
-bool _gpumemcpy = false; //if true, copy memory every kernel call
 bool _gpufloat = false;
 bool _gpumixed = false;
 
@@ -214,7 +213,8 @@ void zero_power() {
 void sum_power() {
     // Just add up all of the threaded power into the zeroth element
     for (int t=0; t<MAXTHREAD; t++)
-	printf("# Bin 0 counter for thread %2d: %9lld\n", t, npcf[t].bincounts[0]);
+	//printf("# Bin 0 counter for thread %2d: %9lld\n", t, npcf[t].bincounts[0]);
+        printf("# Bin 0 counter for thread %2d: %d\n", t, npcf[t].bincounts[0]);
     for (int t=1; t<MAXTHREAD; t++)
         npcf[0].sum_power(npcf+t);
     for (int t=1; t<MAXTHREAD; t++)
@@ -329,7 +329,6 @@ int main(int argc, char *argv[]) {
 	    }
 	else if (!strcmp(argv[i],"-def")||!strcmp(argv[i],"-default")) { fname = NULL; }
 	else if (!strcmp(argv[i],"-gpu")) _gpumode = atoi(argv[++i]);
-        else if (!strcmp(argv[i],"-memcpy")) _gpumemcpy = true;
         else if (!strcmp(argv[i],"-float")) _gpufloat = true;
         else if (!strcmp(argv[i],"-mixed")) _gpumixed = true;
 	else {

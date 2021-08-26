@@ -9,7 +9,7 @@ class Multipoles {
 
   private:
     Float m[NMULT];	// Ambiguous as to whether this zeros out on construction
-    uint64 count;
+    int count;
     int nload;
 
 #ifdef AVX
@@ -25,7 +25,7 @@ class Multipoles {
   public:
 
     Float *multipoles() { return m; }
-    uint64 ncount() { return count; }
+    int ncount() { return count; }
 
     inline void reset_buffer() {
 	nload = 0;
@@ -46,7 +46,7 @@ class Multipoles {
 	return;
     }
 
-    inline void load_and_reset(Float *mptr, uint64 *cptr) {
+    inline void load_and_reset(Float *mptr, int *cptr) {
 	// Reset for a new primary particle, but starting from an existing count
 	for (int kk=0; kk<NMULT; kk++) m[kk] = mptr[kk];
 	count = cptr[0];
@@ -54,7 +54,7 @@ class Multipoles {
 	return;
     }
 
-    void save(Float *mptr, uint64 *cptr) {
+    void save(Float *mptr, int *cptr) {
         // Write the m and count matrices out to these locations
 	cptr[0] = count;
 	for (int kk=0; kk<NMULT; kk++) mptr[kk] = m[kk];

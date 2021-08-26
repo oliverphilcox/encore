@@ -33,7 +33,7 @@ class NPCF {
     float *f_weight5pcf, *f_fivepcf;
 #endif
 
-    uint64 bincounts[NBIN];
+    int bincounts[NBIN];
     Float binweight[NBIN];
     int map[MAXORDER+1][MAXORDER+1][MAXORDER+1];   // The multipole index of x^a y^b z^c
     STimer MultTimer;
@@ -690,13 +690,13 @@ class NPCF {
 	// spherical harmonics in all bins and then the cross-powers.
 	// Need some scratch space:
 	// This also applies the weight of the primary galaxy.
+        MultTimer.Start();
 	Complex alm[NBIN][NLM];   // Apparently this initializes to zero
 
-  MultTimer.Start();
-
+        if (_gpumode == 0) {
 	for (int i=0; i<NBIN; i++) {
 	    Float *m = mult[i].multipoles();
-        bincounts[i] += mult[i].ncount();
+	    bincounts[i] += mult[i].ncount();
 	    binweight[i] += m[0];
 
 	    // Now we're going to recast the Cartesian multipoles into the Y_lm's.
@@ -713,24 +713,25 @@ class NPCF {
 #define CM(a,b,c) m[map[a][b][c]]
 	    Complex *almbin = &(alm[i][0]);
 #include "spherical_harmonics.cpp"
-
-	 }
-
-   MultTimer.Stop();
+	}
+}
 
 #define RealProduct(a,b) (a.real()*b.real()+a.imag()*b.imag())
 
-  // COMPUTE 3PCF CONTRIBUTIONS
+        //compute conjugates if not gpu mode
+        Complex almconj[NBIN][NLM];
+if (_gpumode == 0) {
+        for(int x=0;x<NBIN;x++){
+          for(int l=0, y=0;l<=ORDER;l++){
+            for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+          }
+        }
+}
+        MultTimer.Stop();
 
-  // Precompute complex conjugates of all alm (for m>=0)
-  Complex almconj[NBIN][NLM];
-  for(int x=0;x<NBIN;x++){
-    for(int l=0, y=0;l<=ORDER;l++){
-      for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
-    }
-  }
-
-  BinTimer3.Start();
+        // COMPUTE 3PCF CONTRIBUTIONS
+        // Precompute complex conjugates of all alm (for m>=0)
+        BinTimer3.Start();
 
 	for (int i=0, ct=0; i<NBIN; i++) {
 	    for (int j=i+1; j<NBIN; j++, ct++) {
@@ -880,19 +881,17 @@ class NPCF {
         gpu_allocate_m_luts4(&lut4_m1, &lut4_m2, nouter4);
       }
 
-      if (!_gpumemcpy) {
-        //if not using memcpy, allocate pointers on device here
-        //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
-        int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
-        if (_gpufloat) {
-          //allocate float arrays and cast as floats when copying
-          gpu_allocate_weight4pcf(&f_weight4pcf, weight4pcf, size_w);
-          gpu_allocate_fourpcf(&f_fourpcf, fourpcf, nell4*N4PCF);
-        } else {
-          //normal mode - allocate GPU arrays and copy
-          gpu_allocate_weight4pcf(&d_weight4pcf, weight4pcf, size_w);
-          gpu_allocate_fourpcf(&d_fourpcf, fourpcf, nell4*N4PCF);
-        }
+      //if not using memcpy, allocate pointers on device here
+      //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+      int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+      if (_gpufloat) {
+        //allocate float arrays and cast as floats when copying
+        gpu_allocate_weight4pcf(&f_weight4pcf, weight4pcf, size_w);
+        gpu_allocate_fourpcf(&f_fourpcf, fourpcf, nell4*N4PCF);
+      } else {
+        //normal mode - allocate GPU arrays and copy
+        gpu_allocate_weight4pcf(&d_weight4pcf, weight4pcf, size_w);
+        gpu_allocate_fourpcf(&d_fourpcf, fourpcf, nell4*N4PCF);
       }
 
       //populate LUTs
@@ -984,38 +983,38 @@ class NPCF {
       //execute GPU kernel
       if (_gpufloat) {
         //float kernel
-        gpu_add_to_power4_float(f_fourpcf, f_weight4pcf, &(alm[0][0]),
-        	&(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_n,
+        gpu_add_to_power4_float(f_fourpcf, f_weight4pcf,
+        	lut4_l1, lut4_l2, lut4_l3, lut4_n,
         	lut4_zeta, lut4_i, lut4_j, lut4_k,
-        	(float)wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
+        	(float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else if (_gpumixed) {
-        gpu_add_to_power4_mixed(d_fourpcf, d_weight4pcf, &(alm[0][0]),
-                &(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_n,
+        gpu_add_to_power4_mixed(d_fourpcf, d_weight4pcf,
+                lut4_l1, lut4_l2, lut4_l3, lut4_n,
                 lut4_zeta, lut4_i, lut4_j, lut4_k,
-                (float)wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
+                (float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else {
-        gpu_add_to_power4(d_fourpcf, d_weight4pcf, &(alm[0][0]),
-        	&(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_n,
+        gpu_add_to_power4(d_fourpcf, d_weight4pcf,
+        	lut4_l1, lut4_l2, lut4_l3, lut4_n,
         	lut4_zeta, lut4_i, lut4_j, lut4_k,
-        	wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
+        	wp, NBIN, NLM, nouter4, ninner4, nell4);
       }
     } else if (_gpumode == 2) {
       //execute alternate GPU kernel 
       if (_gpufloat) {
-        gpu_add_to_power4_orig_float(f_fourpcf, f_weight4pcf, &(alm[0][0]),
-                &(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_m1,
+        gpu_add_to_power4_orig_float(f_fourpcf, f_weight4pcf,
+                lut4_l1, lut4_l2, lut4_l3, lut4_m1,
 		lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-                (float)wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
+                (float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else if (_gpumixed) {
-        gpu_add_to_power4_orig_mixed(d_fourpcf, d_weight4pcf, &(alm[0][0]),
-                &(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_m1,
+        gpu_add_to_power4_orig_mixed(d_fourpcf, d_weight4pcf,
+                lut4_l1, lut4_l2, lut4_l3, lut4_m1,
                 lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-                (float)wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
+                (float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else {
-        gpu_add_to_power4_orig(d_fourpcf, d_weight4pcf, &(alm[0][0]),
-                &(almconj[0][0]), lut4_l1, lut4_l2, lut4_l3, lut4_m1,
+        gpu_add_to_power4_orig(d_fourpcf, d_weight4pcf,
+                lut4_l1, lut4_l2, lut4_l3, lut4_m1,
                 lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-                wp, NBIN, ORDER, NLM, nouter4, ninner4, nell4);
+                wp, NBIN, NLM, nouter4, ninner4, nell4);
       }
     } else if (_gpumode == 0) {
 #endif
@@ -1175,18 +1174,16 @@ class NPCF {
       //malloc m LUTs
       gpu_allocate_m_luts(&lut5_m1, &lut5_m2, &lut5_m3, nouter5);
     }
-    if (!_gpumemcpy) {
-      //if not using memcpy, allocate pointers on device here
-      int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
-      if (_gpufloat) {
-        //allocate float arrays and cast as floats when copying
-        gpu_allocate_weight5pcf(&f_weight5pcf, weight5pcf, size_w);
-        gpu_allocate_fivepcf(&f_fivepcf, fivepcf, nell5*N5PCF);
-      } else { 
-	//normal mode - allocate GPU arrays and copy
-        gpu_allocate_weight5pcf(&d_weight5pcf, weight5pcf, size_w); 
-        gpu_allocate_fivepcf(&d_fivepcf, fivepcf, nell5*N5PCF);
-      }
+    //if not using memcpy, allocate pointers on device here
+    int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+    if (_gpufloat) {
+      //allocate float arrays and cast as floats when copying
+      gpu_allocate_weight5pcf(&f_weight5pcf, weight5pcf, size_w);
+      gpu_allocate_fivepcf(&f_fivepcf, fivepcf, nell5*N5PCF);
+    } else { 
+      //normal mode - allocate GPU arrays and copy
+      gpu_allocate_weight5pcf(&d_weight5pcf, weight5pcf, size_w); 
+      gpu_allocate_fivepcf(&d_fivepcf, fivepcf, nell5*N5PCF);
     }
 
     //populate LUTs
@@ -1307,52 +1304,41 @@ class NPCF {
     //execute GPU kernel
     if (_gpufloat) {
       //float kernel
-      gpu_add_to_power5_float(f_fivepcf, f_weight5pcf, &(alm[0][0]),
-        &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
+      gpu_add_to_power5_float(f_fivepcf, f_weight5pcf,
+        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        (float)(wp), NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+        (float)(wp), NBIN, NLM, nouter5, ninner5, nell5);
     } else if (_gpumixed) {
-      gpu_add_to_power5_mixed(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-        &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
+      gpu_add_to_power5_mixed(d_fivepcf, d_weight5pcf,
+        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        (float)wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
-    } else if (_gpumemcpy) {
-      gpu_add_to_power5_with_memcpy(fivepcf, weight5pcf, &(alm[0][0]),
-        &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
-        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+        (float)wp, NBIN, NLM, nouter5, ninner5, nell5);
     } else {
-      gpu_add_to_power5(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-	&(almconj[0][0]), lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, 
+      gpu_add_to_power5(d_fivepcf, d_weight5pcf,
+	lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, 
 	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-	wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+	wp, NBIN, NLM, nouter5, ninner5, nell5);
     }
   } else if (_gpumode == 2) {
     //execute alternate GPU kernel 
     if (_gpufloat) {
-      gpu_add_to_power5_orig_float(f_fivepcf, f_weight5pcf, &(alm[0][0]),
-        &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4,
+      gpu_add_to_power5_orig_float(f_fivepcf, f_weight5pcf,
+        lut5_l1, lut5_l2, lut5_l3, lut5_l4,
         lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        (float)wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+        (float)wp, NBIN, NLM, nouter5, ninner5, nell5);
     } else if (_gpumixed) {
-      gpu_add_to_power5_orig_mixed(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-        &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4,
+      gpu_add_to_power5_orig_mixed(d_fivepcf, d_weight5pcf,
+        lut5_l1, lut5_l2, lut5_l3, lut5_l4,
         lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        (float)wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
-    } else if (_gpumemcpy) {
-      gpu_add_to_power5_orig_with_memcpy(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-        &(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4,
-        lut5_m1, lut5_m2, lut5_m3,
-        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+        (float)wp, NBIN, NLM, nouter5, ninner5, nell5);
     } else {
-      gpu_add_to_power5_orig(d_fivepcf, d_weight5pcf, &(alm[0][0]),
-	&(almconj[0][0]), lut5_l1, lut5_l2, lut5_l3, lut5_l4, 
+      gpu_add_to_power5_orig(d_fivepcf, d_weight5pcf,
+	lut5_l1, lut5_l2, lut5_l3, lut5_l4, 
 	lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, NBIN, ORDER, NLM, nouter5, ninner5, nell5);
+        wp, NBIN, NLM, nouter5, ninner5, nell5);
     }
   } else if (_gpumode == 0) {
 #endif
@@ -1599,6 +1585,7 @@ class NPCF {
       }
       gpu_free_memory_m4(lut4_m1, lut4_m2);
       gpu_free_memory_m(lut5_m1, lut5_m2, lut5_m3);
+      gpu_free_memory_alms(!_gpufloat && !_gpumixed);
 #endif
     }
 
