@@ -88,7 +88,7 @@ foreach simroot ( fiducial ) #ns_m ns_p Ob2_m Ob2_p )
   rm -f $errlog
   date > $errlog
   echo Executing $0 >> $errlog
-  echo $command >> $errlog
+  #echo $command >> $errlog
   echo $OMP_NUM_THREADS >> $errlog
 
   date

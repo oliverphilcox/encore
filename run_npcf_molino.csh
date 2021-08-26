@@ -16,7 +16,7 @@
 
 #SBATCH -n 16 # cpus
 #SBATCH -N 1 # tasks
-#SBATCH -t 0-07:58:59 # time
+#SBATCH -t 0-11:58:59 # time
 #SBATCH --mem-per-cpu=1GB
 #SBATCH -o /home/ophilcox/out/molino_all_4pcf2_run.%a.out         # File to which STDOUT will be written (make sure the directory exists!)
 #SBATCH -e /home/ophilcox/out/molino_all_4pcf2_run.%a.err         # File to which STDERR will be written
