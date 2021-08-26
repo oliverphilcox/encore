@@ -1,4 +1,4 @@
-// npcf_estimator.cpp -- Oliver Philcox, 2020. Based on Daniel Eisenstein's 3PCF code.
+// encore.cpp -- Oliver Philcox, 2021. Vaguely based on Daniel Eisenstein's 3PCF code.
 
 #include <math.h>
 #include <stdlib.h>
@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <complex>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include "threevector.hh"
 #include "STimer.cc"
 
@@ -17,11 +18,11 @@
 
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 // We output only NPCF with bin1 < bin2 < bin3 etc. to avoid degeneracy and the bins including zero separations
-#define NBIN 20
+#define NBIN 10
 
 // ORDER is the order of the Ylm we'll compute.
 // This must be <=MAXORDER, currently hard coded to 10 for 3PCF/4PCF, or 5 for 5PCF, or 3 for 6PCF.
-#define ORDER 5
+#define ORDER 4
 
 // MAXTHREAD is the maximum number of allowed threads.
 // Big trouble if actual number exceeds this!
@@ -34,8 +35,18 @@ typedef unsigned long long int uint64;
 // Only double precision has been tested.
 // Note that the AVX multipole code is always double precision.
 typedef double Float;
+//typedef float Float;
 typedef double3 Float3;
 typedef std::complex<double> Complex;
+//typedef std::complex<float> Complex;
+
+//0 = CPU
+//1 = GPU primary kernel
+//2, higher = alternate kernels
+short _gpumode = 0;
+bool _gpumemcpy = false; //if true, copy memory every kernel call
+bool _gpufloat = false;
+bool _gpumixed = false;
 
 // We need a vector floor3 function
 Float3 floor3(float3 p) {
@@ -116,6 +127,13 @@ class Pairs {
 
     void save_pairs(char* out_string, Float rmin, Float rmax) {
       // Print the output isotropic 2PCF counts to file
+
+      // Create output directory if not in existence
+      const char* out_dir;
+      out_dir = "output";
+      if (mkdir(out_dir,S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)==0){
+            printf("\nCreating output directory\n");
+        }
 
       // First create output files
        char out_name[1000];
@@ -238,6 +256,9 @@ void usage() {
     fprintf(stderr, "The intention is to allow re-use of DD counts while changing the DR and RR counts.\n");
     fprintf(stderr, "    -balance: Rescale the negative weights so that the total weight is zero.\n");
     fprintf(stderr, "    -invert: Multiply all the weights by -1.\n");
+    fprintf(stderr, "    -gpu: GPU mode => 0 = CPU, 1 = GPU, 2+ = GPU alternate kernel. This requires compilation in GPU mode.\n");
+    fprintf(stderr, "    -float: GPU mode => use floats to speed up\n");
+    fprintf(stderr, "    -mixed: GPU mode => use mixed precision - alms are floats, accumulation is doubles\n");
 
     exit(1);
     return;
@@ -306,6 +327,12 @@ int main(int argc, char *argv[]) {
 		make_random=1;
 	    }
 	else if (!strcmp(argv[i],"-def")||!strcmp(argv[i],"-default")) { fname = NULL; }
+#ifdef GPU
+	else if (!strcmp(argv[i],"-gpu")) _gpumode = atoi(argv[++i]);
+        else if (!strcmp(argv[i],"-memcpy")) _gpumemcpy = true;
+        else if (!strcmp(argv[i],"-float")) _gpufloat = true;
+        else if (!strcmp(argv[i],"-mixed")) _gpumixed = true;
+#endif
 	else {
 	    fprintf(stderr, "Don't recognize %s\n", argv[i]);
 	    usage();
@@ -339,6 +366,11 @@ int main(int argc, char *argv[]) {
     if (gridsize<1) printf("#\n# WARNING: grid appears inefficiently coarse\n#\n");
     printf("Bins = %d\n", NBIN);
     printf("Order = %d\n", ORDER);
+    #ifdef ALLPARITY
+    printf("Parity: All\n");
+    #else
+    printf("Parity: Even\n");
+    #endif
 
 // Print which N-points are used and check ell-max
     assert(ORDER<=MAXORDER);   // Actually, this will run, but it would give silent zeros.
@@ -395,21 +427,25 @@ int main(int argc, char *argv[]) {
     WeightsReadTime.Start();
 
     load_3pcf_coupling(); // load matrix of weights from file into the `threepcf_coupling` array
-    generate_3pcf_weights(); // generate the 3pcf weights for this specific LMAX, including normalization factors. They are stored in weights3pcf
+    generate_3pcf_weights(); // generate the 3pcf weights for this specific LMAX, including normalization factors. They are stored in weight3pcf
 
 #ifdef FOURPCF
     load_4pcf_coupling(); // load matrix of weights from file into the `fourpcf_coupling` array
-    generate_4pcf_weights(); // generate the 4pcf weights for this specific LMAX, including normalization factors. They are stored in weights4pcf1 and weights4pcf2
+    generate_4pcf_weights(); // generate the 4pcf weights for this specific LMAX, including normalization factors. They are stored in weight4pcf
+#endif
+
+#ifdef DISCONNECTED
+  generate_discon_weights(); // generate the disconnected weights for this specific LMAX, including normalizations. They are stored in weightdiscon1 and weightdiscon2
 #endif
 
 #ifdef FIVEPCF
     load_5pcf_coupling(); // load matrix of weights from file into the `fivepcf_coupling` array
-    generate_5pcf_weights(); // generate the 5pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
+    generate_5pcf_weights(); // generate the 5pcf weights for this specific LMAX, including normalization factors. They are stored in weight5pcf
 #endif
 
 #ifdef SIXPCF
     load_6pcf_coupling(); // load matrix of weights from file into the `sixpcf_coupling` array
-    generate_6pcf_weights(); // generate the 6pcf weights for this specific LMAX, including normalization factors. They are stored in weights5pcf
+    generate_6pcf_weights(); // generate the 6pcf weights for this specific LMAX, including normalization factors. They are stored in weight6pcf
 #endif
 
     WeightsReadTime.Stop();
@@ -445,6 +481,11 @@ int main(int argc, char *argv[]) {
 
     zero_power();
     fflush(NULL);
+
+    #ifdef DISCONNECTED
+    // update some parameters
+    for(int i=0;i<MAXTHREAD;i++) npcf[i].load_params(qbalance, qinvert);
+    #endif
 
     Prologue.Stop();
 

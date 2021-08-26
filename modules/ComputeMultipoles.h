@@ -18,6 +18,27 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 
     STimer accmult, powertime; // measure the time spent accumulating powers for multipoles
 
+//#define GPUALM
+#ifdef GPUALM
+  // development code to compute alm on GPU rather than CPU/AVX
+#define GPUMAX 10000
+  // Create GPU arrays
+    double x_array[GPUMAX];
+    double y_array[GPUMAX];
+    double z_array[GPUMAX];
+    double w_array[GPUMAX];
+    int bin_array[GPUMAX];
+    int buffer = 0;
+    double *gmult; // for gpu
+    int *gmult_ct;
+    double cmult[NBIN*NMULT]; // for cpu
+    int cmult_ct[NBIN];
+
+    // Copy memory (only need to do once!)
+    gpu_allocate_mult(&gmult, cmult, &gmult_ct, cmult_ct, NBIN*NMULT,NBIN);
+
+#endif
+
     // We're going to loop only over the non-empty cells.
 #ifdef OPENMP
 #pragma omp parallel for schedule(dynamic,8) reduction(+:cnt)
@@ -35,6 +56,9 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
         if (ne==0) printf("# Running single threaded.\n");
 #endif
     if(int(ne%1000)==0) printf("Computing cell %d of %d on thread %d\n",ne,grid->nf,thread);
+#ifdef FIVEPCF
+    else if (int(ne%100)==0) printf("Computing cell %d of %d on thread %d\n",ne,grid->nf,thread);
+#endif
     	// Loop over primary cells.
 	Cell primary = grid->c[n];
 	integer3 prim_id = grid->cell_id_from_1d(n);
@@ -43,7 +67,6 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 
 	// continue; // To skip all of the list-building and summations.
 		// Everything else takes negligible time
-
 
 	// Now we need to loop over all primary particles in this cell
 	for (int j = primary.start; j<primary.start+primary.np; j++) {
@@ -108,6 +131,21 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 
 		    //continue;   // Skip the multipole creation
 
+#ifdef GPUALM
+        bin_array[buffer] = bin;
+        x_array[buffer] = dx.x;
+        y_array[buffer] = dx.y;
+        z_array[buffer] = dx.z;
+        w_array[buffer] = grid->p[k].w;
+        buffer++;
+
+        if (buffer==GPUMAX){
+            // empty the buffer if we reach maximum capacity!
+            accumulate_multipoles(gmult, gmult_ct, x_array, y_array, z_array, w_array, bin_array, buffer, GPUMAX, NMULT, ORDER);
+            buffer = 0;
+        }
+#else
+
         // Accumulate the multipoles
 #ifdef AVX 	    // AVX only available for ORDER>=1
 		    if (ORDER) mult[bin].addAVX(dx.x, dx.y, dx.z, grid->p[k].w);
@@ -115,10 +153,30 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 #else
 		    mult[bin].add(dx.x, dx.y, dx.z, grid->p[k].w);
 #endif
+#endif
 
-  } // Done with this secondary particle
+}// Done with this secondary particle
+
 	    } // Done with this secondary cell
+
+    #ifdef GPUALM
+      // empty the buffer
+      accumulate_multipoles(gmult, gmult_ct, x_array, y_array, z_array, w_array, bin_array, buffer, GPUMAX, NMULT, ORDER);
+      buffer = 0;
+
+      // copy memory
+      copy_mult(&gmult, cmult, &gmult_ct, cmult_ct, NBIN*NMULT, NBIN);
+
+      // Copy into the mult class for consistency
+      for(int b=0,ct=0;b<NBIN;b++){
+        for(int j=0;j<NMULT;j++,ct++) mult[b].m[j] = cmult[ct];
+        mult[b].count = (uint64)cmult_ct[b];
+      }
+
+    #else
       for (int b=0; b<NBIN; b++) mult[b].finish();   // Finish the multipoles
+    #endif
+
       if(thread==0) accmult.Stop();
 
 	    if (smsave && grid->p[j].w>=0) {
@@ -132,9 +190,21 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
       if(thread==0) powertime.Start();
 	    npcf[thread].add_to_power(mult, primary_w);
       if(thread==0) powertime.Stop();
+// #ifdef FIVEPCF
+// if (int(ne%100)==0) printf("Powertime: %6.3f\n", powertime.Elapsed());
+// #endif
 
 	} // Done with this primary particle
     } // Done with this primary cell, end of omp pragma
+    if (_gpumode > 0) {
+      if (!_gpumemcpy) npcf[0].do_copy_memory();  //if not memcpy, must now copy back to host
+      npcf[0].free_gpu_memory(); //free all GPU memory
+    }
+
+  #ifdef GPUALM
+    // free gpu memory
+    gpu_free_mult(gmult,gmult_ct);
+  #endif
 
 #ifndef OPENMP
 #ifdef AVX
@@ -150,6 +220,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
     Float3 boxsize = grid->rect_boxsize;
     float expected = grid->np * (4*M_PI/3.0)*(pow(rmax,3.0)-pow(rmin,3.0))/(boxsize.x*boxsize.y*boxsize.z);
     printf("# We expected %1.0f pairs per primary particle, off by a factor of %f.\n", expected, cnt/(expected*grid->np));
+
     delete[] mlist;
 
     // Detailed timing breakdown

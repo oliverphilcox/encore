@@ -7,7 +7,7 @@ class Multipoles {
 // However, for AVX, we have to gather 8 particles before we do the work.
 // This is handled internally.  Call finish() at the end to make sure the last set is done.
 
-  private:
+  public:
     Float m[NMULT];	// Ambiguous as to whether this zeros out on construction
     uint64 count;
     int nload;
