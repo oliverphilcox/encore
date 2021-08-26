@@ -82,7 +82,7 @@ void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf,
 
 //allocate LUTs used in all kernels
 void gpu_allocate_luts4(int **p_lut4_l1, int **p_lut4_l2, int **p_lut4_l3,
-        int **p_lut4_n, int **p_lut4_zeta, int **p_lut4_i, int **p_lut4_j, int **p_lut4_k, 
+        int **p_lut4_n, int **p_lut4_odd, int **p_lut4_zeta, int **p_lut4_i, int **p_lut4_j, int **p_lut4_k,
         int nouter, int ninner);
 
 //allocate m LUTs for alternate kernels
@@ -107,7 +107,7 @@ void copy_fourpcf(double **p_fourpcf, double *fourpcf, int size);
 void copy_fourpcf(float **p_fourpcf, double *fourpcf, int size);
 
 //free memory
-void gpu_free_luts4(int *lut4_l1, int *lut4_l2, int *lut4_l3,
+void gpu_free_luts4(int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_odd,
         int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k);
 
 void gpu_free_memory4(double *fourpcf, double *weight4pcf);
@@ -119,7 +119,7 @@ void gpu_free_memory_m4(int *lut4_m1, int *lut4_m2);
 
 //allocate LUTs used in all kernels
 void gpu_allocate_luts(int **p_lut5_l1, int **p_lut5_l2, int **p_lut5_l12, int **p_lut5_l3,
-        int **p_lut5_l4, int **p_lut5_n,
+        int **p_lut5_l4, int **p_lut5_odd, int **p_lut5_n,
         int **p_lut5_zeta, int **p_lut5_i, int **p_lut5_j, int **p_lut5_k, int **p_lut5_l,
         int nouter, int ninner);
 
@@ -143,7 +143,7 @@ void copy_fivepcf(float **p_fivepcf, double *fivepcf, int size);
 
 //free memory
 void gpu_free_luts(int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, int *lut5_n, int *lut5_zeta, int *lut5_i,
+        int *lut5_l4, int *lut5_odd, int *lut5_n, int *lut5_zeta, int *lut5_i,
 	int *lut5_j, int *lut5_k, int *lut5_l);
 
 void gpu_free_memory(double *fivepcf, double *weight5pcf);

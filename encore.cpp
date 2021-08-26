@@ -40,7 +40,6 @@ typedef double3 Float3;
 typedef std::complex<double> Complex;
 //typedef std::complex<float> Complex;
 
-
 //0 = CPU
 //1 = GPU primary kernel
 //2, higher = alternate kernels
@@ -364,6 +363,11 @@ int main(int argc, char *argv[]) {
     if (gridsize<1) printf("#\n# WARNING: grid appears inefficiently coarse\n#\n");
     printf("Bins = %d\n", NBIN);
     printf("Order = %d\n", ORDER);
+    #ifdef ALLPARITY
+    printf("Parity: All\n");
+    #else
+    printf("Parity: Even\n");
+    #endif
 
 // Print which N-points are used and check ell-max
     assert(ORDER<=MAXORDER);   // Actually, this will run, but it would give silent zeros.
