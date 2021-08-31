@@ -16,7 +16,7 @@ thrust::complex<float>* f_alm, *f_almconj; //for use in float kernels
 
 __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
-	int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n,
+	int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
 	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, 
         double wp, int nlm, int nouter, int ninner, int almidx) {
     //thread index i
@@ -37,6 +37,7 @@ __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
     int tmp_l2 = l2*(l2+1)/2;
     int l3 = lut4_l3[iouter];
     int tmp_l3 = l3*(l3+1)/2;
+    bool odd = lut4_odd[iouter]; // this defines whether we have an odd-parity multiplet
     int n = lut4_n[iouter]; //this is the starting n for this thread
     //inner loop indices
     int ii = lut4_i[iinner];
@@ -49,28 +50,58 @@ __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
     double delta;
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
-    for(int m1=-l1; m1<=l1; m1++){
-      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-      if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
-      // Iterate over all m2 (including negative)
-      for(int m2=-l2; m2<=l2; m2++){
-        m3 = -m1-m2;
-        if (m3<0) continue; // only need to use m3>=0
-        if (m3>l3) continue; // this violates triangle conditions
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          m3 = -m1-m2;
+          if (m3<0) continue; // only need to use m3>=0
+          if (m3>l3) continue; // this violates triangle conditions
 
-        // Look up the relevant weight
-        weight = weight4pcf[n++];
-        if (weight==0) continue;
-        tmp_lm3 = tmp_l3+m3;
-        // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
-        // No conjugates needed for a_l3m3 since we fixed m3>=0!
-        // Note we add the coupling weight factor to a_l3m3
-        if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Look up the relevant weight
+          weight = weight4pcf[n++];
+          if (weight==0) continue;
+          tmp_lm3 = tmp_l3+m3;
+          // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+          // No conjugates needed for a_l3m3 since we fixed m3>=0!
+          // Note we add the coupling weight factor to a_l3m3
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
         
-	//calculate delta
-        delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
-	//add to this element
-	pcf_element += delta;
+	  //calculate delta
+          delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag(); //odd parity
+	  //add to this element
+	  pcf_element += delta;
+        }
+      }
+    } else {
+        for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          m3 = -m1-m2;
+          if (m3<0) continue; // only need to use m3>=0
+          if (m3>l3) continue; // this violates triangle conditions
+
+          // Look up the relevant weight
+          weight = weight4pcf[n++];
+          if (weight==0) continue;
+          tmp_lm3 = tmp_l3+m3;
+          // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+          // No conjugates needed for a_l3m3 since we fixed m3>=0!
+          // Note we add the coupling weight factor to a_l3m3
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+
+          //calculate delta
+          //if (odd) delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag(); //odd parity
+          //else delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
+          delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
+          //add to this element
+          pcf_element += delta;
+        }
       }
     }
     fourpcf[bin_index] = pcf_element; //copy back to global memory 
@@ -78,7 +109,7 @@ __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
 
 __global__ void add_to_power4_kernel_float(float *fourpcf, float *weight4pcf,
         thrust::complex<float>* alm, thrust::complex<float> *almconj,
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
         int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         float wp, int nlm, int nouter, int ninner, int almidx) {
     //thread index i
@@ -99,6 +130,7 @@ __global__ void add_to_power4_kernel_float(float *fourpcf, float *weight4pcf,
     int tmp_l2 = l2*(l2+1)/2;
     int l3 = lut4_l3[iouter];
     int tmp_l3 = l3*(l3+1)/2;
+    bool odd = lut4_odd[iouter]; // this defines whether we have an odd-parity multiplet
     int n = lut4_n[iouter]; //this is the starting n for this thread
     //inner loop indices
     int ii = lut4_i[iinner];
@@ -111,28 +143,56 @@ __global__ void add_to_power4_kernel_float(float *fourpcf, float *weight4pcf,
     float delta;
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
-    for(int m1=-l1; m1<=l1; m1++){
-      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-      if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
-      // Iterate over all m2 (including negative)
-      for(int m2=-l2; m2<=l2; m2++){
-        m3 = -m1-m2;
-        if (m3<0) continue; // only need to use m3>=0
-        if (m3>l3) continue; // this violates triangle conditions
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          m3 = -m1-m2;
+          if (m3<0) continue; // only need to use m3>=0
+          if (m3>l3) continue; // this violates triangle conditions
 
-        // Look up the relevant weight
-        weight = weight4pcf[n++];
-        if (weight==0) continue;
-        tmp_lm3 = tmp_l3+m3;
-        // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
-        // No conjugates needed for a_l3m3 since we fixed m3>=0!
-        // Note we add the coupling weight factor to a_l3m3
-        if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Look up the relevant weight
+          weight = weight4pcf[n++];
+          if (weight==0) continue;
+          tmp_lm3 = tmp_l3+m3;
+          // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+          // No conjugates needed for a_l3m3 since we fixed m3>=0!
+          // Note we add the coupling weight factor to a_l3m3
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
 
-        //calculate delta
-        delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
-        //add to this element
-        pcf_element += delta;
+          //calculate delta
+          delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag(); //odd parity
+          //add to this element
+          pcf_element += delta;
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          m3 = -m1-m2;
+          if (m3<0) continue; // only need to use m3>=0
+          if (m3>l3) continue; // this violates triangle conditions
+
+          // Look up the relevant weight
+          weight = weight4pcf[n++];
+          if (weight==0) continue;
+          tmp_lm3 = tmp_l3+m3;
+          // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+          // No conjugates needed for a_l3m3 since we fixed m3>=0!
+          // Note we add the coupling weight factor to a_l3m3
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+
+          //calculate delta
+          delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
+          //add to this element
+          pcf_element += delta;
+        }
       }
     }
     fourpcf[bin_index] = pcf_element; //copy back to global memory 
@@ -140,7 +200,7 @@ __global__ void add_to_power4_kernel_float(float *fourpcf, float *weight4pcf,
 
 __global__ void add_to_power4_kernel_mixed(double *fourpcf, double *weight4pcf,
         thrust::complex<float>* alm, thrust::complex<float> *almconj,
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
         int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         float wp, int nlm, int nouter, int ninner, int almidx) {
     //thread index i
@@ -161,6 +221,7 @@ __global__ void add_to_power4_kernel_mixed(double *fourpcf, double *weight4pcf,
     int tmp_l2 = l2*(l2+1)/2;
     int l3 = lut4_l3[iouter];
     int tmp_l3 = l3*(l3+1)/2;
+    bool odd = lut4_odd[iouter]; // this defines whether we have an odd-parity multiplet
     int n = lut4_n[iouter]; //this is the starting n for this thread
     //inner loop indices
     int ii = lut4_i[iinner];
@@ -173,28 +234,56 @@ __global__ void add_to_power4_kernel_mixed(double *fourpcf, double *weight4pcf,
     double delta;
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
-    for(int m1=-l1; m1<=l1; m1++){
-      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-      if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
-      // Iterate over all m2 (including negative)
-      for(int m2=-l2; m2<=l2; m2++){
-        m3 = -m1-m2;
-        if (m3<0) continue; // only need to use m3>=0
-        if (m3>l3) continue; // this violates triangle conditions
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          m3 = -m1-m2;
+          if (m3<0) continue; // only need to use m3>=0
+          if (m3>l3) continue; // this violates triangle conditions
 
-        // Look up the relevant weight
-        weight = weight4pcf[n++];
-        if (weight==0) continue;
-        tmp_lm3 = tmp_l3+m3;
-        // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
-        // No conjugates needed for a_l3m3 since we fixed m3>=0!
-        // Note we add the coupling weight factor to a_l3m3
-        if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Look up the relevant weight
+          weight = weight4pcf[n++];
+          if (weight==0) continue;
+          tmp_lm3 = tmp_l3+m3;
+          // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+          // No conjugates needed for a_l3m3 since we fixed m3>=0!
+          // Note we add the coupling weight factor to a_l3m3
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
 
-        //calculate delta
-        delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
-        //add to this element
-        pcf_element += delta;
+          //calculate delta
+          delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag(); //odd parity
+          //add to this element
+          pcf_element += delta;
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          m3 = -m1-m2;
+          if (m3<0) continue; // only need to use m3>=0
+          if (m3>l3) continue; // this violates triangle conditions
+
+          // Look up the relevant weight
+          weight = weight4pcf[n++];
+          if (weight==0) continue;
+          tmp_lm3 = tmp_l3+m3;
+          // Create temporary copy of a_l2m2 and a_l3m3, taking conjugate if necessary
+          // No conjugates needed for a_l3m3 since we fixed m3>=0!
+          // Note we add the coupling weight factor to a_l3m3
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+
+          //calculate delta
+          delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
+          //add to this element
+          pcf_element += delta;
+        }
       }
     }
     fourpcf[bin_index] = pcf_element; //copy back to global memory 
@@ -202,9 +291,9 @@ __global__ void add_to_power4_kernel_mixed(double *fourpcf, double *weight4pcf,
 
 __global__ void add_to_power4_kernel_orig(double *fourpcf, double *weight4pcf,
         thrust::complex<double>* alm, thrust::complex<double> *almconj,
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_m1, int *lut4_m2,
-	int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
-        double wp, int nlm, int nouter, int ninner, int almidx) {
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_m1,
+	int *lut4_m2, int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j,
+	int *lut4_k, double wp, int nlm, int nouter, int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
@@ -220,6 +309,7 @@ __global__ void add_to_power4_kernel_orig(double *fourpcf, double *weight4pcf,
     int tmp_l2 = l2*(l2+1)/2;
     int l3 = lut4_l3[iouter];
     int tmp_l3 = l3*(l3+1)/2;
+    bool odd = lut4_odd[iouter]; // this defines whether we have an odd-parity multiplet
     int m1 = lut4_m1[iouter];
     int m2 = lut4_m2[iouter];
     int n = lut4_n[iouter]; 
@@ -237,15 +327,16 @@ __global__ void add_to_power4_kernel_orig(double *fourpcf, double *weight4pcf,
     if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
     int m3 = -m1-m2;
     int tmp_lm3 = tmp_l3+m3;
-    double delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
-    atomicAdd(&fourpcf[bin_index], delta);
+    //double delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
+    //atomicAdd(&fourpcf[bin_index], delta);
+    if (odd) atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag()); else atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real());
 }
 
 __global__ void add_to_power4_kernel_orig_float(float *fourpcf,
 	float *weight4pcf, thrust::complex<float>* alm,
 	thrust::complex<float> *almconj, int *lut4_l1, int *lut4_l2,
-	int *lut4_l3, int *lut4_m1, int *lut4_m2, int *lut4_n, int *lut4_zeta,
-	int *lut4_i, int *lut4_j, int *lut4_k, float wp, 
+	int *lut4_l3, bool *lut4_odd, int *lut4_m1, int *lut4_m2, int *lut4_n,
+	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, float wp, 
 	int nlm, int nouter, int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -262,6 +353,7 @@ __global__ void add_to_power4_kernel_orig_float(float *fourpcf,
     int tmp_l2 = l2*(l2+1)/2;
     int l3 = lut4_l3[iouter];
     int tmp_l3 = l3*(l3+1)/2;
+    bool odd = lut4_odd[iouter]; // this defines whether we have an odd-parity multiplet
     int m1 = lut4_m1[iouter];
     int m2 = lut4_m2[iouter];
     int n = lut4_n[iouter]; 
@@ -278,15 +370,16 @@ __global__ void add_to_power4_kernel_orig_float(float *fourpcf,
     if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
     int m3 = -m1-m2;
     int tmp_lm3 = tmp_l3+m3;
-    float delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
-    atomicAdd(&fourpcf[bin_index], delta);
+    //float delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
+    //atomicAdd(&fourpcf[bin_index], delta);
+    if (odd) atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag()); else atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real());
 }
 
 __global__ void add_to_power4_kernel_orig_mixed(double *fourpcf,
 	double *weight4pcf, thrust::complex<float>* alm,
 	thrust::complex<float> *almconj, int *lut4_l1, int *lut4_l2,
-	int *lut4_l3, int *lut4_m1, int *lut4_m2, int *lut4_n, int *lut4_zeta,
-	int *lut4_i, int *lut4_j, int *lut4_k, float wp, 
+	int *lut4_l3, bool *lut4_odd, int *lut4_m1, int *lut4_m2, int *lut4_n,
+	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, float wp, 
 	int nlm, int nouter, int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -303,6 +396,7 @@ __global__ void add_to_power4_kernel_orig_mixed(double *fourpcf,
     int tmp_l2 = l2*(l2+1)/2;
     int l3 = lut4_l3[iouter];
     int tmp_l3 = l3*(l3+1)/2;
+    bool odd = lut4_odd[iouter]; // this defines whether we have an odd-parity multiplet
     int m1 = lut4_m1[iouter];
     int m2 = lut4_m2[iouter];
     int n = lut4_n[iouter]; 
@@ -319,8 +413,9 @@ __global__ void add_to_power4_kernel_orig_mixed(double *fourpcf,
     if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
     int m3 = -m1-m2;
     int tmp_lm3 = tmp_l3+m3;
-    double delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real();
-    atomicAdd(&fourpcf[bin_index], delta);
+    //double delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
+    //atomicAdd(&fourpcf[bin_index], delta);
+    if (odd) atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag()); else atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real());
 }
 
 //* ==== ADD TO POWER 5 KERNELS ==== *//
@@ -328,8 +423,9 @@ __global__ void add_to_power4_kernel_orig_mixed(double *fourpcf,
 __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
 	int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3, int *lut5_l4,
-	int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k,
-	int *lut5_l, double wp, int nlm, int nouter, int ninner, int almidx) {
+	bool *lut5_odd, int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j,
+	int *lut5_k, int *lut5_l, double wp, int nlm, int nouter,
+	int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
@@ -351,6 +447,7 @@ __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf,
     int tmp_l3 = l3*(l3+1)/2;
     int l4 = lut5_l4[iouter];
     int tmp_l4 = l4*(l4+1)/2;
+    bool odd = lut5_odd[iouter];
     int n = lut5_n[iouter]; //this is the starting n for this thread
     //inner loop indices
     int ii = lut5_i[iinner];
@@ -365,31 +462,63 @@ __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf,
     double delta;
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
-    for(int m1=-l1; m1<=l1; m1++){
-      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-      if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
-      // Iterate over all m2 (including negative)
-      for(int m2=-l2; m2<=l2; m2++){
-        if(abs(m1+m2)>l12) continue; // m12 condition
-        // Create temporary copy of a_l2m2, taking conjugate if necessary
-        if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
-        // Iterate over m3 (including negative)
-        for(int m3=-l3; m3<=l3; m3++){
-          m4 = -m1-m2-m3;
-          if (m4<0) continue; // only need to use m4>=0
-          if (m4>l4) continue; // this violates triangle conditions
-          // Look up the relevant weight
-          weight = weight5pcf[n++];
-          if (weight==0) continue;
-          tmp_lm4 = tmp_l4+m4;
-          // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
-          // No conjugates needed for a_l4m4 since we fixed m4>=0!
-          // Note we add the coupling weight factor to a_l4m4
-          if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
-	  //calculate delta
-          delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real();
-	  //add to this element
-	  pcf_element += delta;
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            m4 = -m1-m2-m3;
+            if (m4<0) continue; // only need to use m4>=0
+            if (m4>l4) continue; // this violates triangle conditions
+            // Look up the relevant weight
+            weight = weight5pcf[n++];
+            if (weight==0) continue;
+            tmp_lm4 = tmp_l4+m4;
+            // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+            // No conjugates needed for a_l4m4 since we fixed m4>=0!
+            // Note we add the coupling weight factor to a_l4m4
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            //calculate delta
+            delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag(); //odd parity
+            //add to this element
+            pcf_element += delta;
+          }
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            m4 = -m1-m2-m3;
+            if (m4<0) continue; // only need to use m4>=0
+            if (m4>l4) continue; // this violates triangle conditions
+            // Look up the relevant weight
+            weight = weight5pcf[n++];
+            if (weight==0) continue;
+            tmp_lm4 = tmp_l4+m4;
+            // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+            // No conjugates needed for a_l4m4 since we fixed m4>=0!
+            // Note we add the coupling weight factor to a_l4m4
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            //calculate delta
+            delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
+            //add to this element
+            pcf_element += delta;
+          }
         }
       }
     }
@@ -399,8 +528,9 @@ __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf,
 __global__ void add_to_power5_kernel_float(float *fivepcf, float *weight5pcf,
 	thrust::complex<float>* alm, thrust::complex<float> *almconj,
 	int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3, int *lut5_l4,
-	int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k,
-	int *lut5_l, float wp, int nlm, int nouter, int ninner, int almidx) {
+	bool *lut5_odd, int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j,
+	int *lut5_k, int *lut5_l, float wp, int nlm, int nouter,
+	int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
@@ -422,6 +552,7 @@ __global__ void add_to_power5_kernel_float(float *fivepcf, float *weight5pcf,
     int tmp_l3 = l3*(l3+1)/2;
     int l4 = lut5_l4[iouter];
     int tmp_l4 = l4*(l4+1)/2;
+    bool odd = lut5_odd[iouter];
     int n = lut5_n[iouter]; //this is the starting n for this thread
     //inner loop indices
     int ii = lut5_i[iinner];
@@ -436,31 +567,63 @@ __global__ void add_to_power5_kernel_float(float *fivepcf, float *weight5pcf,
     float delta;
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
-    for(int m1=-l1; m1<=l1; m1++){
-      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-      if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
-      // Iterate over all m2 (including negative)
-      for(int m2=-l2; m2<=l2; m2++){
-        if(abs(m1+m2)>l12) continue; // m12 condition
-        // Create temporary copy of a_l2m2, taking conjugate if necessary
-        if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
-        // Iterate over m3 (including negative)
-        for(int m3=-l3; m3<=l3; m3++){
-          m4 = -m1-m2-m3;
-          if (m4<0) continue; // only need to use m4>=0
-          if (m4>l4) continue; // this violates triangle conditions
-          // Look up the relevant weight
-          weight = weight5pcf[n++];
-          if (weight==0) continue;
-          tmp_lm4 = tmp_l4+m4;
-          // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
-          // No conjugates needed for a_l4m4 since we fixed m4>=0!
-          // Note we add the coupling weight factor to a_l4m4
-          if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
-          //calculate delta
-          delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real();
-          //add to this element
-          pcf_element += delta;
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            m4 = -m1-m2-m3;
+            if (m4<0) continue; // only need to use m4>=0
+            if (m4>l4) continue; // this violates triangle conditions
+            // Look up the relevant weight
+            weight = weight5pcf[n++];
+            if (weight==0) continue;
+            tmp_lm4 = tmp_l4+m4;
+            // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+            // No conjugates needed for a_l4m4 since we fixed m4>=0!
+            // Note we add the coupling weight factor to a_l4m4
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            //calculate delta
+            delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag(); //odd parity
+            //add to this element
+            pcf_element += delta;
+          }
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            m4 = -m1-m2-m3;
+            if (m4<0) continue; // only need to use m4>=0
+            if (m4>l4) continue; // this violates triangle conditions
+            // Look up the relevant weight
+            weight = weight5pcf[n++];
+            if (weight==0) continue;
+            tmp_lm4 = tmp_l4+m4;
+            // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+            // No conjugates needed for a_l4m4 since we fixed m4>=0!
+            // Note we add the coupling weight factor to a_l4m4
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            //calculate delta
+            delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
+            //add to this element
+            pcf_element += delta;
+          }
         }
       }
     }
@@ -470,8 +633,9 @@ __global__ void add_to_power5_kernel_float(float *fivepcf, float *weight5pcf,
 __global__ void add_to_power5_kernel_mixed(double *fivepcf, double *weight5pcf,
 	thrust::complex<float>* alm, thrust::complex<float> *almconj,
 	int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3, int *lut5_l4,
-	int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k,
-	int *lut5_l, float wp, int nlm, int nouter, int ninner, int almidx) {
+	bool *lut5_odd, int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j,
+	int *lut5_k, int *lut5_l, float wp, int nlm, int nouter,
+	int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
@@ -493,6 +657,7 @@ __global__ void add_to_power5_kernel_mixed(double *fivepcf, double *weight5pcf,
     int tmp_l3 = l3*(l3+1)/2;
     int l4 = lut5_l4[iouter];
     int tmp_l4 = l4*(l4+1)/2;
+    bool odd = lut5_odd[iouter];
     int n = lut5_n[iouter]; //this is the starting n for this thread
     //inner loop indices
     int ii = lut5_i[iinner];
@@ -507,31 +672,63 @@ __global__ void add_to_power5_kernel_mixed(double *fivepcf, double *weight5pcf,
     double delta;
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
-    for(int m1=-l1; m1<=l1; m1++){
-      // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-      if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
-      // Iterate over all m2 (including negative)
-      for(int m2=-l2; m2<=l2; m2++){
-        if(abs(m1+m2)>l12) continue; // m12 condition
-        // Create temporary copy of a_l2m2, taking conjugate if necessary
-        if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
-        // Iterate over m3 (including negative)
-        for(int m3=-l3; m3<=l3; m3++){
-          m4 = -m1-m2-m3;
-          if (m4<0) continue; // only need to use m4>=0
-          if (m4>l4) continue; // this violates triangle conditions
-          // Look up the relevant weight
-          weight = weight5pcf[n++];
-          if (weight==0) continue;
-          tmp_lm4 = tmp_l4+m4;
-          // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
-          // No conjugates needed for a_l4m4 since we fixed m4>=0!
-          // Note we add the coupling weight factor to a_l4m4
-          if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
-          //calculate delta
-          delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real();
-          //add to this element
-          pcf_element += delta;
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            m4 = -m1-m2-m3;
+            if (m4<0) continue; // only need to use m4>=0
+            if (m4>l4) continue; // this violates triangle conditions
+            // Look up the relevant weight
+            weight = weight5pcf[n++];
+            if (weight==0) continue;
+            tmp_lm4 = tmp_l4+m4;
+            // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+            // No conjugates needed for a_l4m4 since we fixed m4>=0!
+            // Note we add the coupling weight factor to a_l4m4
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            //calculate delta
+            delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag(); //odd parity
+            //add to this element
+            pcf_element += delta;
+          }
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            m4 = -m1-m2-m3;
+            if (m4<0) continue; // only need to use m4>=0
+            if (m4>l4) continue; // this violates triangle conditions
+            // Look up the relevant weight
+            weight = weight5pcf[n++];
+            if (weight==0) continue;
+            tmp_lm4 = tmp_l4+m4;
+            // Create temporary copies of a_l3m3 and a_l4m4, taking conjugates if necessary
+            // No conjugates needed for a_l4m4 since we fixed m4>=0!
+            // Note we add the coupling weight factor to a_l4m4
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            //calculate delta
+            delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
+            //add to this element
+            pcf_element += delta;
+          }
         }
       }
     }
@@ -540,8 +737,8 @@ __global__ void add_to_power5_kernel_mixed(double *fivepcf, double *weight5pcf,
 
 __global__ void add_to_power5_kernel_orig(double *fivepcf, double *weight5pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
-	int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4, int *lut5_m1,
-	int *lut5_m2, int *lut5_m3, int *lut5_n, int *lut5_zeta,
+	int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4, bool *lut5_odd,
+	int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n, int *lut5_zeta,
 	int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
         double wp, int nlm, int nouter, int ninner, int almidx) {
     //thread index i
@@ -561,6 +758,7 @@ __global__ void add_to_power5_kernel_orig(double *fivepcf, double *weight5pcf,
     int tmp_l3 = l3*(l3+1)/2;
     int l4 = lut5_l4[iouter];
     int tmp_l4 = l4*(l4+1)/2;
+    bool odd = lut5_odd[iouter];
     int m1 = lut5_m1[iouter];
     int m2 = lut5_m2[iouter];
     int m3 = lut5_m3[iouter];
@@ -581,17 +779,18 @@ __global__ void add_to_power5_kernel_orig(double *fivepcf, double *weight5pcf,
     int m4 = -m1-m2-m3;
     int tmp_lm4 = tmp_l4+m4;
     if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
-    double delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real();
-    atomicAdd(&fivepcf[bin_index], delta);
-    //atomicAdd(&fivepcf[bin_index], m2);
+    //double delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
+    //atomicAdd(&fivepcf[bin_index], delta);
+    if (odd) atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag()); else atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real()); 
 }
 
 __global__ void add_to_power5_kernel_orig_float(float *fivepcf,
 	float *weight5pcf, thrust::complex<float>* alm,
 	thrust::complex<float> *almconj, int *lut5_l1, int *lut5_l2,
-	int *lut5_l3, int *lut5_l4, int *lut5_m1, int *lut5_m2, int *lut5_m3,
-	int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k,
-	int *lut5_l, float wp, int nlm, int nouter, int ninner, int almidx) {
+	int *lut5_l3, int *lut5_l4, bool *lut5_odd, int *lut5_m1, int *lut5_m2,
+	int *lut5_m3, int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j,
+	int *lut5_k, int *lut5_l, float wp, int nlm, int nouter,
+	int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
@@ -609,6 +808,7 @@ __global__ void add_to_power5_kernel_orig_float(float *fivepcf,
     int tmp_l3 = l3*(l3+1)/2;
     int l4 = lut5_l4[iouter];
     int tmp_l4 = l4*(l4+1)/2;
+    bool odd = lut5_odd[iouter];
     int m1 = lut5_m1[iouter];
     int m2 = lut5_m2[iouter];
     int m3 = lut5_m3[iouter];
@@ -629,16 +829,18 @@ __global__ void add_to_power5_kernel_orig_float(float *fivepcf,
     int m4 = -m1-m2-m3;
     int tmp_lm4 = tmp_l4+m4;
     if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
-    float delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real();
-    atomicAdd(&fivepcf[bin_index], delta);
+    //float delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
+    //atomicAdd(&fivepcf[bin_index], delta);
+    if (odd) atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag()); else atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real());
 }
 
 __global__ void add_to_power5_kernel_orig_mixed(double *fivepcf,
 	double *weight5pcf, thrust::complex<float>* alm,
 	thrust::complex<float> *almconj, int *lut5_l1, int *lut5_l2,
-	int *lut5_l3, int *lut5_l4, int *lut5_m1, int *lut5_m2, int *lut5_m3,
-	int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k,
-	int *lut5_l, float wp, int nlm, int nouter, int ninner, int almidx) {
+	int *lut5_l3, int *lut5_l4, bool *lut5_odd, int *lut5_m1, int *lut5_m2,
+	int *lut5_m3, int *lut5_n, int *lut5_zeta, int *lut5_i, int *lut5_j,
+	int *lut5_k, int *lut5_l, float wp, int nlm, int nouter,
+	int ninner, int almidx) {
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= nouter * ninner) return;
@@ -656,6 +858,7 @@ __global__ void add_to_power5_kernel_orig_mixed(double *fivepcf,
     int tmp_l3 = l3*(l3+1)/2;
     int l4 = lut5_l4[iouter];
     int tmp_l4 = l4*(l4+1)/2;
+    bool odd = lut5_odd[iouter];
     int m1 = lut5_m1[iouter];
     int m2 = lut5_m2[iouter];
     int m3 = lut5_m3[iouter];
@@ -676,8 +879,9 @@ __global__ void add_to_power5_kernel_orig_mixed(double *fivepcf,
     int m4 = -m1-m2-m3;
     int tmp_lm4 = tmp_l4+m4;
     if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
-    double delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real();
-    atomicAdd(&fivepcf[bin_index], delta);
+    //double delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
+    //atomicAdd(&fivepcf[bin_index], delta);
+    if (odd) atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag()); else atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real());
 }
 
 //* ==== ADD PAIRS AND MULTIPOLES ==== *//
@@ -1131,13 +1335,15 @@ __global__ void compute_alms_float(thrust::complex<float>* alm, thrust::complex<
 //* ==== CPU METHODS ==== *//
 //* ==== Allocate LUTs 4 ==== *//
 
-void gpu_allocate_luts4(int **p_lut4_l1, int **p_lut4_l2, int **p_lut4_l3, int **p_lut4_n,
+void gpu_allocate_luts4(int **p_lut4_l1, int **p_lut4_l2, int **p_lut4_l3,
+	bool **p_lut4_odd, int **p_lut4_n,
 	int **p_lut4_zeta, int **p_lut4_i, int **p_lut4_j, int **p_lut4_k,
         int nouter, int ninner) {
   // Allocate Unified Memory – accessible from CPU or GPU
   cudaMallocManaged(&(*p_lut4_l1), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut4_l2), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut4_l3), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut4_odd), nouter*sizeof(bool));
   cudaMallocManaged(&(*p_lut4_n), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut4_zeta), nouter*sizeof(int));
 
@@ -1193,11 +1399,12 @@ void copy_fourpcf(float **p_fourpcf, double *fourpcf, int size) {
 
 //* ==== FREE MEMORY 4 ==== *//
 
-void gpu_free_luts4(int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n,
-	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k) {
+void gpu_free_luts4(int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
+	int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k) {
   cudaFree(lut4_l1);
   cudaFree(lut4_l2);
   cudaFree(lut4_l3);
+  cudaFree(lut4_odd);
   cudaFree(lut4_n);
   cudaFree(lut4_zeta);
   cudaFree(lut4_i);
@@ -1222,16 +1429,17 @@ void gpu_free_memory_m4(int *lut4_m1, int *lut4_m2) {
 
 //* ==== Allocate LUTs 5 ==== *//
 
-void gpu_allocate_luts(int **p_lut5_l1, int **p_lut5_l2, int **p_lut5_l12, int **p_lut5_l3,
-        int **p_lut5_l4, int **p_lut5_n,
-        int **p_lut5_zeta, int **p_lut5_i, int **p_lut5_j, int **p_lut5_k, int **p_lut5_l,
-        int nouter, int ninner) {
+void gpu_allocate_luts(int **p_lut5_l1, int **p_lut5_l2, int **p_lut5_l12,
+	int **p_lut5_l3, int **p_lut5_l4, bool **p_lut5_odd, int **p_lut5_n,
+        int **p_lut5_zeta, int **p_lut5_i, int **p_lut5_j, int **p_lut5_k,
+	int **p_lut5_l, int nouter, int ninner) {
   // Allocate Unified Memory – accessible from CPU or GPU
   cudaMallocManaged(&(*p_lut5_l1), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut5_l2), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut5_l12), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut5_l3), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut5_l4), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut5_odd), nouter*sizeof(bool));
   cudaMallocManaged(&(*p_lut5_n), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut5_zeta), nouter*sizeof(int));
 
@@ -1241,7 +1449,8 @@ void gpu_allocate_luts(int **p_lut5_l1, int **p_lut5_l2, int **p_lut5_l12, int *
   cudaMallocManaged(&(*p_lut5_l), ninner*sizeof(int));
 }
 
-void gpu_allocate_m_luts(int **p_lut5_m1, int **p_lut5_m2, int **p_lut5_m3, int nouter) {
+void gpu_allocate_m_luts(int **p_lut5_m1, int **p_lut5_m2, int **p_lut5_m3,
+	int nouter) {
   // Allocate Unified Memory – accessible from CPU or GPU
   cudaMallocManaged(&(*p_lut5_m1), nouter*sizeof(int));
   cudaMallocManaged(&(*p_lut5_m2), nouter*sizeof(int));
@@ -1305,13 +1514,14 @@ void copy_fivepcf(float **p_fivepcf, double *fivepcf, int size) {
 //* ==== FREE MEMORY 5 ==== *//
 
 void gpu_free_luts(int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, int *lut5_n, int *lut5_zeta, int *lut5_i,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n, int *lut5_zeta, int *lut5_i,
 	int *lut5_j, int *lut5_k, int *lut5_l) {
   cudaFree(lut5_l1);
   cudaFree(lut5_l2);
   cudaFree(lut5_l12);
   cudaFree(lut5_l3);
   cudaFree(lut5_l4);
+  cudaFree(lut5_odd);
   cudaFree(lut5_n);
   cudaFree(lut5_zeta);
   cudaFree(lut5_i);
@@ -1414,9 +1624,9 @@ void free_gpu_periodic_arrays(int *delta_x, int *delta_y, int *delta_z) {
 //* ==== ADD TO POWER 4 METHODS ===== *//
 
 void gpu_add_to_power4(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_n, int *lut4_zeta,
-	int *lut4_i, int *lut4_j, int *lut4_k, double wp, int nb,
-	int nlm, int nouter, int ninner, int nell4) {
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
+	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, double wp,
+	int nb, int nlm, int nouter, int ninner, int nell4) {
 
   //d_alm and d_almconj already allocated and computed
 
@@ -1435,18 +1645,18 @@ std::cout << "Threads = " << threads << " Nouter = " << nouter << " Ninner = " <
 }
 
   add_to_power4_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2,
-        lut4_l3, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k, 
+        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3,
+	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k, 
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 //float version of main kernel
 void gpu_add_to_power4_float(float *d_fourpcf, float *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
         int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
 
@@ -1462,18 +1672,18 @@ void gpu_add_to_power4_float(float *d_fourpcf, float *d_weight4pcf,
   pstart++;
 
   add_to_power4_kernel_float<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2,
-        lut4_l3, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
+	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 //mixed precision
 void gpu_add_to_power4_mixed(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
         int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
 
@@ -1489,20 +1699,20 @@ void gpu_add_to_power4_mixed(double *d_fourpcf, double *d_weight4pcf,
   pstart++;
 
   add_to_power4_kernel_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2,
-        lut4_l3, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
+	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 //alternate (original) kernel
 void gpu_add_to_power4_orig(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, int *lut4_m1, int *lut4_m2,
-        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
-        double wp, int nb, int nlm, int nouter, int ninner,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_m1,
+	int *lut4_m2, int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j,
+	int *lut4_k, double wp, int nb, int nlm, int nouter, int ninner,
 	int nell4) {
 
   //d_alm and d_almconj already allocated and computed
@@ -1522,18 +1732,18 @@ std::cout << "Threads = " << threads << std::endl;
 }
 
   add_to_power4_kernel_orig<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3,
+        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
 	lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 //float version
 void gpu_add_to_power4_orig_float(float *d_fourpcf, float *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
         int *lut4_m1, int *lut4_m2,
         int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
@@ -1550,18 +1760,18 @@ void gpu_add_to_power4_orig_float(float *d_fourpcf, float *d_weight4pcf,
   pstart++;
 
   add_to_power4_kernel_orig_float<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
         lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 //mixed precision
 void gpu_add_to_power4_orig_mixed(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3,
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
         int *lut4_m1, int *lut4_m2,
         int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
         float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
@@ -1578,12 +1788,12 @@ void gpu_add_to_power4_orig_mixed(double *d_fourpcf, double *d_weight4pcf,
   pstart++;
 
   add_to_power4_kernel_orig_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
 	lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
@@ -1591,7 +1801,7 @@ void gpu_add_to_power4_orig_mixed(double *d_fourpcf, double *d_weight4pcf,
 
 void gpu_add_to_power5(double *d_fivepcf, double *d_weight5pcf, 
         int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, int *lut5_n,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
 	double wp, int nb, int nlm, int nouter, int ninner, int nell5) {
 
@@ -1608,18 +1818,18 @@ void gpu_add_to_power5(double *d_fivepcf, double *d_weight5pcf,
 
   add_to_power5_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, d_alm, d_almconj, lut5_l1, lut5_l2,
-        lut5_l12, lut5_l3, lut5_l4, 
+        lut5_l12, lut5_l3, lut5_l4, lut5_odd,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 void gpu_add_to_power5_float(float *d_fivepcf, float *d_weight5pcf, 
         int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, int *lut5_n,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
         float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
 
@@ -1636,17 +1846,17 @@ void gpu_add_to_power5_float(float *d_fivepcf, float *d_weight5pcf,
 
   add_to_power5_kernel_float<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
 	d_weight5pcf, f_alm, f_almconj, lut5_l1, lut5_l2, lut5_l12,
-	lut5_l3, lut5_l4, lut5_n, lut5_zeta, lut5_i,
+	lut5_l3, lut5_l4, lut5_odd, lut5_n, lut5_zeta, lut5_i,
 	lut5_j, lut5_k, lut5_l, wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 void gpu_add_to_power5_mixed(double *d_fivepcf, double *d_weight5pcf, 
         int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, int *lut5_n,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
         float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
 
@@ -1663,17 +1873,17 @@ void gpu_add_to_power5_mixed(double *d_fivepcf, double *d_weight5pcf,
 
   add_to_power5_kernel_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
 	d_weight5pcf, f_alm, f_almconj, lut5_l1, lut5_l2, lut5_l12,
-	lut5_l3, lut5_l4, lut5_n, lut5_zeta, lut5_i, lut5_j,
+	lut5_l3, lut5_l4, lut5_odd, lut5_n, lut5_zeta, lut5_i, lut5_j,
 	lut5_k, lut5_l, wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 void gpu_add_to_power5_orig(double *d_fivepcf, double *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l3,
-        int *lut5_l4, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
+        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
+	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
 	double wp, int nb, int nlm, int nouter, int ninner, int nell5) {
 
@@ -1690,18 +1900,18 @@ void gpu_add_to_power5_orig(double *d_fivepcf, double *d_weight5pcf,
 
   add_to_power5_kernel_orig<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, d_alm, d_almconj, lut5_l1,lut5_l2,
-        lut5_l3, lut5_l4, lut5_m1, lut5_m2, lut5_m3,
+        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 void gpu_add_to_power5_orig_float(float *d_fivepcf, float *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l3,
-        int *lut5_l4, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
+        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
+	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
         float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
 
@@ -1718,18 +1928,18 @@ void gpu_add_to_power5_orig_float(float *d_fivepcf, float *d_weight5pcf,
 
   add_to_power5_kernel_orig_float<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
-        lut5_l3, lut5_l4, lut5_m1, lut5_m2, lut5_m3,
+        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
 void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l3,
-        int *lut5_l4, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
+        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
+	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
         float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
 
@@ -1746,12 +1956,12 @@ void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf,
 
   add_to_power5_kernel_orig_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
-        lut5_l3, lut5_l4, lut5_m1, lut5_m2, lut5_m3,
+        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nlm, nouter, ninner, almidx);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
@@ -1771,7 +1981,7 @@ void gpu_add_pairs_and_multipoles(double *m, double *posx, double *posy,
         n, nbin, order, nmult, rmin, rmax, rmin2, rmax2, pstart5);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
 }
 
 void gpu_add_pairs_and_multipoles_periodic(double *m, double *posx,
@@ -1793,7 +2003,7 @@ void gpu_add_pairs_and_multipoles_periodic(double *m, double *posx,
 	rmax2, pstart5, cellsize);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
 }
 
 void gpu_compute_alms(int *map, double *m, int nbin, int nlm, int maxp,
@@ -1824,7 +2034,7 @@ void gpu_compute_alms(int *map, double *m, int nbin, int nlm, int maxp,
 	nbin, nlm, maxp, order, mapdim, nmult);
 
   // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
 }
 
 void gpu_compute_alms_float(int *map, double *m, int nbin, int nlm, int maxp,
@@ -1855,5 +2065,12 @@ void gpu_compute_alms_float(int *map, double *m, int nbin, int nlm, int maxp,
 	d_map, m, nbin, nlm, maxp, order, mapdim, nmult);
 
   // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+}
+
+void gpu_device_synchronize() {
+  // Wait for GPU to finish before accessing on host
+  //This does not need to be called after every kernel invocation,
+  //but just before memory is accessed on host
   cudaDeviceSynchronize();
 }

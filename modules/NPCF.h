@@ -16,20 +16,22 @@ class NPCF {
     bool generate_luts = true;
     //declare LUTs as pointers -- we'll want to allocate and populate once
     int *lut4_l1, *lut4_l2, *lut4_l3;
+    bool *lut4_odd;
     int *lut4_m1, *lut4_m2, *lut4_n, *lut4_zeta;
     int *lut4_i, *lut4_j, *lut4_k;
     double *d_weight4pcf, *d_fourpcf;
     //declare pointers for float operations - only used if -float but
-    //simply declaring them doesn't cost must
+    //simply declaring them doesn't cost much 
     float *f_weight4pcf, *f_fourpcf;
 
     int *lut5_l1, *lut5_l2, *lut5_l12, *lut5_l3, *lut5_l4;
+    bool *lut5_odd;
     int *lut5_m1, *lut5_m2, *lut5_m3;
     int *lut5_n, *lut5_zeta;
     int *lut5_i, *lut5_j, *lut5_k, *lut5_l;
     double *d_weight5pcf, *d_fivepcf;
     //declare pointers for float operations - only used if -float but
-    //simply declaring them doesn't cost must
+    //simply declaring them doesn't cost much
     float *f_weight5pcf, *f_fivepcf;
 #endif
 
@@ -327,7 +329,11 @@ class NPCF {
         fprintf(OutFile2,"## Bins: %d\n",NBIN);
         fprintf(OutFile2,"## Minimum Radius = %.2e\n", rmin);
         fprintf(OutFile2,"## Maximum Radius = %.2e\n", rmax);
-        fprintf(OutFile2,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Rows 4+ = zeta_l1l2l3^abc\n");
+        #ifdef ALLPARITY
+          fprintf(OutFile2,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Rows 4+ = zeta_l1l2l3^abc. For odd parity multiplets, we give the value of -i*zeta_l1l2l3^abc.\n");
+        #else
+          fprintf(OutFile2,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Rows 4+ = zeta_l1l2l3^abc\n");
+        #endif
         fprintf(OutFile2,"## Columns 1-3 specify the (l1, l2, l3) multipole triplet\n");
 
         // First print the indices of the radial bins
@@ -365,7 +371,9 @@ class NPCF {
         for(int l1=0,l_index=0;l1<=ORDER;l1++){
           for(int l2=0;l2<=ORDER;l2++){
             for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2);l3++,l_index++){
-              if(pow(-1.,l1+l2+l3)==-1) continue; // skip odd parity and triangle violating bins
+              #ifndef ALLPARITY
+                if(pow(-1.,l1+l2+l3)==-1) continue; // skip odd parity and triangle violating bins
+              #endif
               fprintf(OutFile2,"%d\t%d\t%d\t",l1,l2,l3);
               for (int i=0;i<N4PCF;i++) fprintf(OutFile2,"%le\t",fourpcf[N4PCF*l_index+i]);
               fprintf(OutFile2,"\n");
@@ -490,7 +498,11 @@ class NPCF {
         fprintf(OutFile3,"## Bins: %d\n",NBIN);
         fprintf(OutFile3,"## Minimum Radius = %.2e\n", rmin);
         fprintf(OutFile3,"## Maximum Radius = %.2e\n", rmax);
-        fprintf(OutFile3,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Rows 5+ = zeta_l1l2(l12)l3l4^abcd\n");
+        #ifdef ALLPARITY
+          fprintf(OutFile3,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Rows 5+ = zeta_l1l2(l12)l3l4^abcd. For odd parity multiplets, we give the value of -i*zeta_l1l2(l12)l3l4^abcd.\n");
+        #else
+          fprintf(OutFile3,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Rows 5+ = zeta_l1l2(l12)l3l4^abcd\n");
+        #endif
         fprintf(OutFile3,"## Columns 1-5 specify the (l1, l2, (l12), l3, l4) multipole quintuplet\n");
 
         // First print the indices of the radial bins
@@ -548,7 +560,9 @@ class NPCF {
             for(int l12=fabs(l1-l2);l12<=l1+l2;l12++){
               for(int l3=0;l3<=ORDER;l3++){
                 for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++,l_index++){
-                  if(pow(-1.,l1+l2+l3+l4)==-1) continue; // skip odd parity and triangle violating bins
+                  #ifndef ALLPARITY
+                    if(pow(-1.,l1+l2+l3+l4)==-1) continue; // skip odd parity and triangle violating bins
+                  #endif
                   fprintf(OutFile3,"%d\t%d\t%d\t%d\t%d\t",l1,l2,l12,l3,l4);
                   for (int i=0;i<N5PCF;i++) fprintf(OutFile3,"%le\t",fivepcf[N5PCF*l_index+i]);
                   fprintf(OutFile3,"\n");
@@ -580,7 +594,11 @@ class NPCF {
         fprintf(OutFile4,"## Bins: %d\n",NBIN);
         fprintf(OutFile4,"## Maximum Radius = %.2e\n", rmin);
         fprintf(OutFile4,"## Maximum Radius = %.2e\n", rmax);
-        fprintf(OutFile4,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Row 5 = radial bin 5, Rows 6+ = zeta_l1l2(l12)l3(l123)l4l5^abcde\n");
+        #ifdef ALLPARITY
+          fprintf(OutFile4,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Row 5 = radial bin 5, Rows 6+ = zeta_l1l2(l12)l3(l123)l4l5^abcde. For odd parity multiplets, we give the value of -i*zeta_l1l2(l12)l3(l123)l4l5^abcde.\n");
+        #else
+          fprintf(OutFile4,"## Format: Row 1 = radial bin 1, Row 2 = radial bin 2, Row 3 = radial bin 3, Row 4 = radial bin 4, Row 5 = radial bin 5, Rows 6+ = zeta_l1l2(l12)l3(l123)l4l5^abcde.\n");
+        #endif
         fprintf(OutFile4,"## Columns 1-7 specify the (l1, l2, (l12), l3, (l123), l4, l5) multipole septuplet\n");
 
         // First print the indices of the radial bins
@@ -662,7 +680,9 @@ class NPCF {
                 for(int l123=fabs(l12-l3);l123<=l12+l3;l123++){
                   for(int l4=0;l4<=ORDER;l4++){
                     for(int l5=fabs(l123-l4);l5<=fmin(ORDER,l123+l4);l5++,l_index++){
-                      if(pow(-1.,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity and triangle violating bins
+                      #ifndef ALLPARITY
+                        if(pow(-1.,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity and triangle violating bins
+                      #endif
                       fprintf(OutFile4,"%d\t%d\t%d\t%d\t%d\t%d\t%d\t",l1,l2,l12,l3,l123,l4,l5);
                       for (int i=0;i<N6PCF;i++) fprintf(OutFile4,"%le\t",sixpcf[N6PCF*l_index+i]);
                       fprintf(OutFile4,"\n");
@@ -693,7 +713,7 @@ class NPCF {
         MultTimer.Start();
 	Complex alm[NBIN][NLM];   // Apparently this initializes to zero
 
-        if (_gpumode == 0) {
+        //if (_gpumode == 0) {
 	for (int i=0; i<NBIN; i++) {
 	    Float *m = mult[i].multipoles();
 	    bincounts[i] += mult[i].ncount();
@@ -714,19 +734,19 @@ class NPCF {
 	    Complex *almbin = &(alm[i][0]);
 #include "spherical_harmonics.cpp"
 	}
-}
+//}
 
 #define RealProduct(a,b) (a.real()*b.real()+a.imag()*b.imag())
 
         //compute conjugates if not gpu mode
         Complex almconj[NBIN][NLM];
-if (_gpumode == 0) {
-        for(int x=0;x<NBIN;x++){
-          for(int l=0, y=0;l<=ORDER;l++){
-            for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+        //if (_gpumode == 0) {
+          for(int x=0;x<NBIN;x++){
+            for(int l=0, y=0;l<=ORDER;l++){
+              for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+            }
           }
-        }
-}
+        //}
         MultTimer.Stop();
 
         // COMPUTE 3PCF CONTRIBUTIONS
@@ -818,6 +838,9 @@ if (_gpumode == 0) {
       BinTimer4.Start();
 
       int tmp_l1, tmp_l2, tmp_l3, tmp_lm3, m3; // useful indices
+      #ifdef ALLPARITY
+        int odd; // flag to say whether multiplet is odd-parity
+      #endif
       Float weight; // coupling weight
       Complex alm1wlist[NBIN], alm2list[NBIN]; // arrays to hold intermediate a_lm lists
       Complex alm1w, alm2; // intermediate a_lm values
@@ -841,7 +864,9 @@ if (_gpumode == 0) {
           for(int l2=0;l2<=ORDER;l2++){
             for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++){
               // Skip any odd multipoles with odd parity
-              if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #ifndef ALLPARITY
+                if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #endif
               nouter4++;
             }
           }
@@ -853,8 +878,9 @@ if (_gpumode == 0) {
           for(int l2=0;l2<=ORDER;l2++){
             for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++){
               // Skip any odd multipoles with odd parity
-              if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
-
+              #ifndef ALLPARITY
+                if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #endif
               for(int m1=-l1; m1<=l1; m1++){
                 // Iterate over all m2 (including negative)
                 for(int m2=-l2; m2<=l2; m2++){
@@ -873,7 +899,7 @@ if (_gpumode == 0) {
       }
 
       //malloc all look up tables (LUTs) - primary kernel
-      gpu_allocate_luts4(&lut4_l1, &lut4_l2, &lut4_l3, &lut4_n,
+      gpu_allocate_luts4(&lut4_l1, &lut4_l2, &lut4_l3, &lut4_odd, &lut4_n,
 	&lut4_zeta, &lut4_i, &lut4_j, &lut4_k, nouter4, ninner4);
 
       if (_gpumode == 2) {
@@ -882,7 +908,6 @@ if (_gpumode == 0) {
       }
 
       //if not using memcpy, allocate pointers on device here
-      //int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
       int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
       if (_gpufloat) {
         //allocate float arrays and cast as floats when copying
@@ -905,8 +930,14 @@ if (_gpumode == 0) {
         for(int l1=0,zeta_index=0;l1<=ORDER;l1++){
           for(int l2=0;l2<=ORDER;l2++){
 	    for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
-              // Skip any odd multipoles with odd parity
-	      if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #ifndef ALLPARITY
+                // Skip any odd multipoles with odd parity
+	        if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                lut4_odd[iouter4] = false;
+              #else
+                // Store which variables are odd!
+                if(pow(-1,l1+l2+l3)==-1) lut4_odd[iouter4]=true; else lut4_odd[iouter4]=false;
+              #endif
               //update l luts here
               lut4_l1[iouter4] = l1;
               lut4_l2[iouter4] = l2;
@@ -936,8 +967,10 @@ if (_gpumode == 0) {
         for(int l1=0,zeta_index=0;l1<=ORDER;l1++){
           for(int l2=0;l2<=ORDER;l2++){
             for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
-              // Skip any odd multipoles with odd parity
-              if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #ifndef ALLPARITY
+                // Skip any odd multipoles with odd parity
+                if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #endif
               //loop over ms - need to update n so that LUT has correct
               for(int m1=-l1; m1<=l1; m1++){
                 // Iterate over all m2 (including negative)
@@ -949,6 +982,11 @@ if (_gpumode == 0) {
                   weight = weight4pcf[n++];
                   if (weight==0) continue;
 
+                  #ifndef ALLPARITY
+                    lut4_odd[iouter4] = false;
+                  #else
+                    if(pow(-1,l1+l2+l3)==-1) lut4_odd[iouter4]=true; else lut4_odd[iouter4]=false;
+                  #endif
                   lut4_l1[iouter4] = l1;
                   lut4_l2[iouter4] = l2;
                   lut4_l3[iouter4] = l3;
@@ -984,17 +1022,17 @@ if (_gpumode == 0) {
       if (_gpufloat) {
         //float kernel
         gpu_add_to_power4_float(f_fourpcf, f_weight4pcf,
-        	lut4_l1, lut4_l2, lut4_l3, lut4_n,
+        	lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_n,
         	lut4_zeta, lut4_i, lut4_j, lut4_k,
         	(float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else if (_gpumixed) {
         gpu_add_to_power4_mixed(d_fourpcf, d_weight4pcf,
-                lut4_l1, lut4_l2, lut4_l3, lut4_n,
+                lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_n,
                 lut4_zeta, lut4_i, lut4_j, lut4_k,
                 (float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else {
         gpu_add_to_power4(d_fourpcf, d_weight4pcf,
-        	lut4_l1, lut4_l2, lut4_l3, lut4_n,
+        	lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_n,
         	lut4_zeta, lut4_i, lut4_j, lut4_k,
         	wp, NBIN, NLM, nouter4, ninner4, nell4);
       }
@@ -1002,17 +1040,17 @@ if (_gpumode == 0) {
       //execute alternate GPU kernel 
       if (_gpufloat) {
         gpu_add_to_power4_orig_float(f_fourpcf, f_weight4pcf,
-                lut4_l1, lut4_l2, lut4_l3, lut4_m1,
+                lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_m1,
 		lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
                 (float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else if (_gpumixed) {
         gpu_add_to_power4_orig_mixed(d_fourpcf, d_weight4pcf,
-                lut4_l1, lut4_l2, lut4_l3, lut4_m1,
+                lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_m1,
                 lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
                 (float)wp, NBIN, NLM, nouter4, ninner4, nell4);
       } else {
         gpu_add_to_power4_orig(d_fourpcf, d_weight4pcf,
-                lut4_l1, lut4_l2, lut4_l3, lut4_m1,
+                lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_m1,
                 lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
                 wp, NBIN, NLM, nouter4, ninner4, nell4);
       }
@@ -1032,9 +1070,12 @@ if (_gpumode == 0) {
 
           // Iterate over internal multipole, avoiding bins violating triangle condition
           for(int l3=fabs(l1-l2);l3<=fmin(ORDER,l1+l2); l3++, zeta_index+=N4PCF){
-            // Skip any odd multipoles with odd parity
-            if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
-
+            #ifdef ALLPARITY
+              if(pow(-1,l1+l2+l3)==-1) odd=1; else odd=0;
+            #else
+              // Skip any odd multipoles with odd parity
+              if(pow(-1,l1+l2+l3)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+            #endif
             tmp_l3 = l3*(l3+1)/2;
 
             // Iterate over all m1 (including negative)
@@ -1073,7 +1114,12 @@ if (_gpumode == 0) {
                     for(int k=j+1; k<NBIN; k++){
 
                       // Add contribution to 4PCF array
-                      fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).real();
+                      #ifdef ALLPARITY
+                        if(odd) fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).imag();
+                        else fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).real();
+                      #else
+                        fourpcf[bin_index++] += weight*(alm2*alm[k][tmp_lm3]).real();
+                      #endif
                     }
                   }
                 }
@@ -1103,6 +1149,9 @@ if (_gpumode == 0) {
   Float weight; // coupling weights
   Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN]; // arrays to hold intermediate a_lm lists
   Complex alm1w, alm2, alm3; // intermediate a_lm values
+  #ifdef ALLPARITY
+    int odd; // flag to see if multiplet is odd-parity
+  #endif
 
 #ifdef GPU
   if (_gpumode == 0) generate_luts = false;
@@ -1124,7 +1173,9 @@ if (_gpumode == 0) {
             for(int l3=0;l3<=ORDER;l3++){
               for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) {
                 // Skip any odd multipoles with odd parity
-                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                #ifndef ALLPARITY
+                  if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                #endif
 	        nouter5++;
               }
             }
@@ -1140,8 +1191,9 @@ if (_gpumode == 0) {
             for(int l3=0;l3<=ORDER;l3++){
               for(int l4=fabs(l12-l3);l4<=fmin(ORDER,l12+l3);l4++) {
                 // Skip any odd multipoles with odd parity
-                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
-  
+                #ifndef ALLPARITY
+                  if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                #endif
                 for(int m1=-l1; m1<=l1; m1++){
                   // Iterate over all m2 (including negative)
                   for(int m2=-l2; m2<=l2; m2++){
@@ -1167,7 +1219,7 @@ if (_gpumode == 0) {
 
     //malloc all look up tables (LUTs) - primary kernel
     gpu_allocate_luts(&lut5_l1, &lut5_l2, &lut5_l12, &lut5_l3,
-	&lut5_l4, &lut5_n, &lut5_zeta, &lut5_i, &lut5_j,
+	&lut5_l4, &lut5_odd, &lut5_n, &lut5_zeta, &lut5_i, &lut5_j,
 	&lut5_k, &lut5_l, nouter5, ninner5);
 
     if (_gpumode == 2) {
@@ -1200,7 +1252,12 @@ if (_gpumode == 0) {
             for(int l3=0;l3<=ORDER;l3++){
               for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
                 // Skip any odd multipoles with odd parity
-                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                #ifndef ALLPARITY
+                  if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                  lut5_odd[iouter5] = false;
+                #else
+                  if(pow(-1,l1+l2+l3+l4)==-1) lut5_odd[iouter5] = true; else lut5_odd[iouter5] = false;
+                #endif
 	        //update l luts here
                 lut5_l1[iouter5] = l1;
                 lut5_l2[iouter5] = l2;
@@ -1241,7 +1298,9 @@ if (_gpumode == 0) {
             for(int l3=0;l3<=ORDER;l3++){
               for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
                 // Skip any odd multipoles with odd parity
-                if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                #ifndef ALLPARITY
+                  if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                #endif
                 //loop over ms - need to update n so that LUT has correct
                 for(int m1=-l1; m1<=l1; m1++){
                   // Iterate over all m2 (including negative)
@@ -1255,6 +1314,12 @@ if (_gpumode == 0) {
                       // Look up the relevant weight
                       weight = weight5pcf[n++];
                       if (weight==0) continue;
+
+                      #ifndef ALLPARITY
+                        lut5_odd[iouter5]=false;
+                      #else
+                        if(pow(-1,l1+l2+l3+l4)==-1) lut5_odd[iouter5]=true; else lut5_odd[iouter5]=false;
+                      #endif
 
                       lut5_l1[iouter5] = l1;
                       lut5_l2[iouter5] = l2;
@@ -1296,8 +1361,8 @@ if (_gpumode == 0) {
 
   // Iterate over (l1, l2, (l12), l3, l4) quintuplet
   // NB: n indexes position in the 5PCF weight array, and must be carefully set
-  // We only compute terms with even parity i.e. even l1+l2+l3+l4. These are all real.
-  // The odd parity terms could be included if necessary and are purely imaginary
+  // If ALLPARITY is not set, we only compute terms with even parity i.e. even l1+l2+l3+l4. These are all real.
+  // Else, we also compute odd-parity terms. These are purely imaginary, and we store only the imaginary part.
 
   // Iterate over first multipole
   if (_gpumode == 1) {
@@ -1305,17 +1370,17 @@ if (_gpumode == 0) {
     if (_gpufloat) {
       //float kernel
       gpu_add_to_power5_float(f_fivepcf, f_weight5pcf,
-        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
+        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, lut5_odd,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         (float)(wp), NBIN, NLM, nouter5, ninner5, nell5);
     } else if (_gpumixed) {
       gpu_add_to_power5_mixed(d_fivepcf, d_weight5pcf,
-        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
+        lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, lut5_odd,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         (float)wp, NBIN, NLM, nouter5, ninner5, nell5);
     } else {
       gpu_add_to_power5(d_fivepcf, d_weight5pcf,
-	lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, 
+	lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, lut5_odd,
 	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
 	wp, NBIN, NLM, nouter5, ninner5, nell5);
     }
@@ -1323,19 +1388,19 @@ if (_gpumode == 0) {
     //execute alternate GPU kernel 
     if (_gpufloat) {
       gpu_add_to_power5_orig_float(f_fivepcf, f_weight5pcf,
-        lut5_l1, lut5_l2, lut5_l3, lut5_l4,
+        lut5_l1, lut5_l2, lut5_l3, lut5_l4, lut5_odd,
         lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         (float)wp, NBIN, NLM, nouter5, ninner5, nell5);
     } else if (_gpumixed) {
       gpu_add_to_power5_orig_mixed(d_fivepcf, d_weight5pcf,
-        lut5_l1, lut5_l2, lut5_l3, lut5_l4,
+        lut5_l1, lut5_l2, lut5_l3, lut5_l4, lut5_odd,
         lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         (float)wp, NBIN, NLM, nouter5, ninner5, nell5);
     } else {
       gpu_add_to_power5_orig(d_fivepcf, d_weight5pcf,
-	lut5_l1, lut5_l2, lut5_l3, lut5_l4, 
+	lut5_l1, lut5_l2, lut5_l3, lut5_l4, lut5_odd,
 	lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, NBIN, NLM, nouter5, ninner5, nell5);
@@ -1357,8 +1422,13 @@ if (_gpumode == 0) {
             tmp_l3 = l3*(l3+1)/2;
             // Iterate over fourth multipole, avoiding bins violating triangle condition
             for(int l4=fabs(l12-l3); l4<=fmin(ORDER,l12+l3); l4++, zeta_index+=N5PCF){
-              // Skip any odd multipoles with odd parity
-              if(pow(-1,l1+l2+l3+l4)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+              #ifdef ALLPARITY
+                if(pow(-1,l1+l2+l3+l4)==-1) odd=1; else odd=0;
+              #else
+                // Skip any odd multipoles with odd parity
+                if(pow(-1,l1+l2+l3+l4)==-1) continue;
+              #endif
+
               tmp_l4 = l4*(l4+1)/2;
 
               // Iterate over all m1 (including negative)
@@ -1404,7 +1474,12 @@ if (_gpumode == 0) {
                           // Iterate over final bin and advance the 5PCF array counter
                           for(int l=k+1; l<NBIN; l++){
                             // Add contribution to 5PCF array
-                            fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).real();
+                            #ifdef ALLPARITY
+                              if(odd) fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).imag();
+                              else fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).real();
+                            #else
+                              fivepcf[bin_index++] += weight*(alm3*alm[l][tmp_lm4]).real();
+                            #endif
                           }
                         }
                       }
@@ -1439,11 +1514,14 @@ if (_gpumode == 0) {
   Float weight; // coupling weights
   Complex alm1wlist[NBIN], alm2list[NBIN], alm3list[NBIN], alm4list[NBIN]; // arrays to hold intermediate a_lm lists
   Complex alm1w, alm2, alm3, alm4; // intermediate a_lm values
+  #ifdef ALLPARITY
+    int odd; // flag to see whether multiplet has odd-parity
+  #endif
 
   // Iterate over (l1, l2, (l12), l3, (l123), l4, l5) septuplet
   // NB: n indexes position in the 6PCF weight array, and must be carefully set
-  // We only compute terms with even parity i.e. even l1+l2+l3+l4+l5. These are all real.
-  // The odd parity terms could be included if necessary and are purely imaginary
+  // If ALLPARITY is not set, we only compute terms with even parity i.e. even l1+l2+l3+l4+l5. These are all real.
+  // Else, we also compute odd parity term. These are purely imaginary and we store only the imaginary part.
 
   // Iterate over first multipole
   n=0;
@@ -1472,9 +1550,12 @@ if (_gpumode == 0) {
 
                // Iterate over fifth multipole, avoiding bins violating triangle condition
                for(int l5=fabs(l123-l4); l5<=fmin(ORDER,l123+l4); l5++, zeta_index+=N6PCF){
-
-                 // Skip any odd multipoles with odd parity
-                 if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                   #ifdef ALLPARITY
+                     if(pow(-1,l1+l2+l3+l4+l5)==-1) odd=1; else odd=0;
+                   #else
+                     // Skip any odd multipoles with odd parity
+                     if(pow(-1,l1+l2+l3+l4+l5)==-1) continue;
+                   #endif
 
                    tmp_l5 = l5*(l5+1)/2;
 
@@ -1544,7 +1625,12 @@ if (_gpumode == 0) {
                                   // Iterate over final bin and advance the 6PCF array counter
                                   for(int m=l+1; m<NBIN; m++){
                                       // Add contribution to 6PCF array
-                                      sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
+                                      #ifdef ALLPARITY
+                                        if(odd) sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).imag();
+                                        else sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
+                                      #else
+                                        sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
+                                      #endif
                                     }
                                   }
                                 }
@@ -1572,9 +1658,9 @@ if (_gpumode == 0) {
 
     void free_gpu_memory() {
 #ifdef GPU
-      gpu_free_luts4(lut4_l1, lut4_l2, lut4_l3, lut4_n,
+      gpu_free_luts4(lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_n,
 	lut4_zeta, lut4_i, lut4_j, lut4_k);
-      gpu_free_luts(lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4,
+      gpu_free_luts(lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, lut5_odd,
 	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l);
       if (_gpufloat) {
         gpu_free_memory4(f_fourpcf, f_weight4pcf);

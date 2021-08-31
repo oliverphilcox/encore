@@ -259,6 +259,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 	  } else {
 	    gpu_compute_alms((int *)(npcf[0].map), msave, NBIN, NLM, maxp, ORDER, MAXORDER+1, NMULT);
 	  }
+          gpu_device_synchronize(); //synchronize before copying data
 	  if(thread==0) sphtime.Stop();
 
 	  //reset dcnt and icnt
@@ -301,9 +302,9 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 #endif
     } // Done with this primary cell, end of omp pragma
 
-
 #ifdef GPU
     if (_gpumode > 0) {
+        gpu_device_synchronize(); //synchronize before copying data
         printf("\nGPU Spherical harmonics: %.3f s",sphtime.Elapsed());
         npcf[0].do_copy_memory();  //if not memcpy, must now copy back to host
         npcf[0].free_gpu_memory(); //free all GPU memory

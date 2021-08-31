@@ -257,7 +257,7 @@ void usage() {
     fprintf(stderr, "The intention is to allow re-use of DD counts while changing the DR and RR counts.\n");
     fprintf(stderr, "    -balance: Rescale the negative weights so that the total weight is zero.\n");
     fprintf(stderr, "    -invert: Multiply all the weights by -1.\n");
-    fprintf(stderr, "    -gpu: GPU mode => 0 = CPU, 1 = GPU, 2+ = GPU alternate kernel\n");
+    fprintf(stderr, "    -gpu: GPU mode => 0 = CPU, 1 = GPU, 2+ = GPU alternate kernel. This requires compilation in GPU mode.\n");
     fprintf(stderr, "    -float: GPU mode => use floats to speed up\n");
     fprintf(stderr, "    -mixed: GPU mode => use mixed precision - alms are floats, accumulation is doubles\n");
 
@@ -364,6 +364,11 @@ int main(int argc, char *argv[]) {
     if (gridsize<1) printf("#\n# WARNING: grid appears inefficiently coarse\n#\n");
     printf("Bins = %d\n", NBIN);
     printf("Order = %d\n", ORDER);
+    #ifdef ALLPARITY
+      printf("Parity: All\n");
+    #else
+      printf("Parity: Even\n");
+    #endif
 
 // Print which N-points are used and check ell-max
     assert(ORDER<=MAXORDER);   // Actually, this will run, but it would give silent zeros.
