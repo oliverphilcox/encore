@@ -328,9 +328,11 @@ int main(int argc, char *argv[]) {
 		make_random=1;
 	    }
 	else if (!strcmp(argv[i],"-def")||!strcmp(argv[i],"-default")) { fname = NULL; }
+#ifdef GPU
 	else if (!strcmp(argv[i],"-gpu")) _gpumode = atoi(argv[++i]);
         else if (!strcmp(argv[i],"-float")) _gpufloat = true;
         else if (!strcmp(argv[i],"-mixed")) _gpumixed = true;
+#endif
 	else {
 	    fprintf(stderr, "Don't recognize %s\n", argv[i]);
 	    usage();

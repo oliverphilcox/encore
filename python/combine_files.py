@@ -30,6 +30,9 @@ for N in range(10):
     if os.path.exists(R_file):
         Ns.append(N)
 
+if len(Ns)==0:
+    raise Exception("No files found with input string %s"%inputs)
+
 for N in Ns:
     # First load in R piece
     R_file = inputs+'.r_%dpcf.txt'%N
@@ -115,7 +118,7 @@ for N in Ns:
             print("Loading edge correction weights from file.")
         else:
             # Compute weights from scratch
-            subprocess.run(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads])
+            subprocess.call(["python",get_script_path()+"/edge_correction_weights.py","%d"%N,"%d"%LMAX,'%d'%threads])
 
         coupling_tmp = np.load(input_weights)
 

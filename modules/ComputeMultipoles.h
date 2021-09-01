@@ -169,6 +169,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 #ifdef PERIODIC
                         ppos-=grid->cell_sep(delta);
 #endif
+
 		        // This is the position of the particle as viewed from the
 		        // secondary cell.
 		        // Now loop over the particles in this secondary cell
@@ -198,6 +199,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 		            //continue;   // Skip the multipole creation
 
                             // Accumulate the multipoles
+
 #ifdef AVX 	    // AVX only available for ORDER>=1
 		            if (ORDER) mult[bin].addAVX(dx.x, dx.y, dx.z, grid->p[k].w);
 			    else  mult[bin].add(dx.x, dx.y, dx.z, grid->p[k].w);
@@ -210,6 +212,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
             //done with delta.x loop
             for (int b=0; b<NBIN; b++) mult[b].finish();   // Finish the multipoles
             if(thread==0) accmult.Stop();
+
 
 	    if (smsave && grid->p[j].w>=0) {
 	        // We're saving multipoles, and this particle has positive weight.
@@ -315,6 +318,11 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
   #endif
     }
 #endif
+
+  #ifdef GPUALM
+    // free gpu memory
+    gpu_free_mult(gmult,gmult_ct);
+  #endif
 
 #ifndef OPENMP
 #ifdef AVX

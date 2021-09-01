@@ -19,6 +19,13 @@ else:
 
 print("\nComputing the edge-correction matrices for the %dPCF up to l_max = %d\n"%(N,LMAX))
 
+# import timing module if present (no problem if not)
+try:
+    import tqdm
+    has_tqdm = True
+except ImportError:
+    has_tqdm = False
+
 if N==3:
     if all_parity:
         raise Exception("3PCF has no odd-parity contributions!")
@@ -88,7 +95,13 @@ elif N==4:
         return tmp_out
 
     pool = multiprocessing.Pool(threads)
-    coupling_matrix = np.asarray(list(pool.map(compute_matrix_coeff, range(len(ell_1)))))
+    if has_tqdm:
+        result = list(tqdm.tqdm(pool.imap(compute_matrix_coeff, range(len(ell_1))),total=len(ell_1)))
+    else:
+        result = list(pool.imap(compute_matrix_coeff, range(len(ell_1))))
+    pool.close()
+    pool.join()
+    coupling_matrix = np.asarray(result)
 
 elif N==5:
     # First define array of ells
@@ -132,7 +145,7 @@ elif N==5:
                 Lp_1,Lp_2,Lp_12,Lp_3,Lp_4 = ell_1[k],ell_2[k],ell_12[k],ell_3[k],ell_4[k]
 
                 # Compute prefactor
-                pref = pref_2*np.sqrt((2.*Lp_1+1.)*(2.*Lp_2+1.)*(2.*Lp_12+1.)*(2.*Lp_3+1.)*(2.+Lp_4+1.))/(4.*np.pi)**2.
+                pref = pref_2*np.sqrt((2.*Lp_1+1.)*(2.*Lp_2+1.)*(2.*Lp_12+1.)*(2.*Lp_3+1.)*(2.*Lp_4+1.))/(4.*np.pi)**2.
 
                 # Compute 3j couplings
                 three_j_piece = np.float64(wigner_3j(L_1,Lp_1,Lpp_1,0,0,0))
@@ -154,7 +167,13 @@ elif N==5:
         return tmp_out
 
     pool = multiprocessing.Pool(threads)
-    coupling_matrix = np.asarray(list(pool.map(compute_matrix_coeff, range(len(ell_1)))))
+    if has_tqdm:
+        result = list(tqdm.tqdm(pool.imap(compute_matrix_coeff, range(len(ell_1))),total=len(ell_1)))
+    else:
+        result = list(pool.imap(compute_matrix_coeff, range(len(ell_1))))
+    pool.close()
+    pool.join()
+    coupling_matrix = np.asarray(result)
 
 elif N==6:
     # First define array of ells
@@ -202,7 +221,7 @@ elif N==6:
                 Lp_1,Lp_2,Lp_12,Lp_3,Lp_123,Lp_4,Lp_5 = ell_1[k],ell_2[k],ell_12[k],ell_3[k],ell_123[k],ell_4[k],ell_5[k]
 
                 # Compute prefactor
-                pref = pref_2*np.sqrt((2.*Lp_1+1.)*(2.*Lp_2+1.)*(2.*Lp_12+1.)*(2.*Lp_3+1.)*(2.*Lp_123+1.)*(2.+Lp_4+1.)*(2.+Lp_5+1.))/(4.*np.pi)**(5./2.)
+                pref = pref_2*np.sqrt((2.*Lp_1+1.)*(2.*Lp_2+1.)*(2.*Lp_12+1.)*(2.*Lp_3+1.)*(2.*Lp_123+1.)*(2.*Lp_4+1.)*(2.*Lp_5+1.))/(4.*np.pi)**(5./2.)
 
                 # Compute three-J couplings
                 three_j_piece = np.float64(wigner_3j(L_1,Lp_1,Lpp_1,0,0,0))
@@ -228,7 +247,11 @@ elif N==6:
         return tmp_out
 
     pool = multiprocessing.Pool(threads)
-    coupling_matrix = np.asarray(list(pool.map(compute_matrix_coeff, range(len(ell_1)))))
+    if has_tqdm:
+        result = list(tqdm.tqdm(pool.imap(compute_matrix_coeff, range(len(ell_1))),total=len(ell_1)))
+    else:
+        result = list(pool.imap(compute_matrix_coeff, range(len(ell_1))))
+    coupling_matrix = np.asarray(result)
 
 if all_parity:
     outfile = os.path.dirname(os.path.realpath(sys.argv[0]))+'/../coupling_matrices/edge_correction_matrix_%dpcf_LMAX%d_all.npy'%(N,LMAX)

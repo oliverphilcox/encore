@@ -23,7 +23,6 @@ class NPCF {
     //declare pointers for float operations - only used if -float but
     //simply declaring them doesn't cost much 
     float *f_weight4pcf, *f_fourpcf;
-
     int *lut5_l1, *lut5_l2, *lut5_l12, *lut5_l3, *lut5_l4;
     bool *lut5_odd;
     int *lut5_m1, *lut5_m2, *lut5_m3;

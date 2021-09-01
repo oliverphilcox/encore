@@ -10,7 +10,7 @@
 #
 ####################################################################################################################
 
-MODES = -DFOURPCF -DFIVEPCF -DOPENMP
+MODES = -DFOURPCF -DDISCONNECTED -DOPENMP -DALLPARITY
 # Add the -DPERIODIC flag to run with periodic boundary conditions
 # Add the -DDISCONNECTED flag to include the disconnected 4PCF contributions
 # Add the -DFOURPCF flag to include the four-point correlator
@@ -29,14 +29,15 @@ AVX = -DAVX
 
 # COMPILATION FOR LINUX MACHINES WITH g++
 # Add ${CUFLAGS} for CUDA
-CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall -pg
+CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall
 #CXXFLAGS = -O3 ${CUFLAGS} $(MODES)
 CXXFLAGS = -O3 $(MODES)
 
 # COMPILATION FOR LINUX MACHINES WITH INTEL COMPILERS
 # here optimized for machines with AVX512 registers
 #CXX = icpc
-#CXXFLAGS= -O2 -xCORE-AVX512 -qopt-zmm-usage=high -qopenmp ${CUFLAGS}
+#CXXFLAGS= -O2 -xCORE-AVX512 -qopt-zmm-usage=high -qopenmp $(MODES)
+#CXXFLAGS= -O2 -xCORE-AVX512 -qopt-zmm-usage=high -qopenmp ${CUFLAGS} $(MODES)
 
 # COMPILATION FOR MACS (no OpenMP)
 #CXXFLAGS = -O2 -Wall

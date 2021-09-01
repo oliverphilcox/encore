@@ -52,7 +52,8 @@ for i in range(100):
     if not os.path.exists(DmR_file): continue
     # Extract counts
     tmp_counts = np.loadtxt(DmR_file,skiprows=7)
-    countsN_all.append(tmp_counts[:,2::2]+1.0j*tmp_counts[:,3::2])
+    # Read-in and take complex conjugate (since definition involves a_lm^*)
+    countsN_all.append(tmp_counts[:,2::2]-1.0j*tmp_counts[:,3::2])
 countsN_all = np.asarray(countsN_all)
 N_files = len(countsN_all)
 NN_lm = np.mean(countsN_all,axis=0)
@@ -94,7 +95,8 @@ for i in range(100):
     if not os.path.exists(DmR_file): continue
     # Extract counts
     tmp_counts = np.loadtxt(DmR_file,skiprows=8)
-    countsN_all.append(tmp_counts[:,4::2]+1.0j*tmp_counts[:,5::2])
+    # Read-in and take complex conjugate (since definition involves a_lm^*)
+    countsN_all.append(tmp_counts[:,4::2]-1.0j*tmp_counts[:,5::2])
 countsN_all = np.asarray(countsN_all)
 assert len(countsN_all)==N_files
 RNN_lmlm = np.mean(countsN_all,axis=0)*-1. # add -1 due to weight inversion

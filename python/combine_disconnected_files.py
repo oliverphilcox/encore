@@ -39,7 +39,8 @@ R_file = inputs+'.r_2pcf_mult1.txt'
 countsR = np.loadtxt(R_file,skiprows=7) # skipping rows with radial bins
 l1_lm, m1_lm = np.asarray(countsR[:,:2],dtype=int).T
 bin1_lm = np.asarray(np.loadtxt(R_file,skiprows=6,max_rows=1),dtype=int)
-RR_lm = countsR[:,2::2]+1.0j*countsR[:,3::2]
+# Read-in and take complex conjugate (since definition involves a_lm^*)
+RR_lm = countsR[:,2::2]-1.0j*countsR[:,3::2]
 
 n_ell = len(np.unique(l1_lm))
 lmax = n_ell-1
@@ -54,7 +55,8 @@ for i in range(100):
     if not os.path.exists(DmR_file): continue
     # Extract counts
     tmp_counts = np.loadtxt(DmR_file,skiprows=7)
-    countsN_all.append(tmp_counts[:,2::2]+1.0j*tmp_counts[:,3::2])
+    # Read-in and take complex conjugate (since definition involves a_lm^*)
+    countsN_all.append(tmp_counts[:,2::2]-1.0j*tmp_counts[:,3::2])
 countsN_all = np.asarray(countsN_all)
 N_files = len(countsN_all)
 NN_lm = np.mean(countsN_all,axis=0)
@@ -118,10 +120,10 @@ R_file = inputs+'.r_2pcf_mult2.txt'
 countsR = np.loadtxt(R_file,skiprows=8) # skipping rows with radial bins
 l1_lmlm, m1_lmlm, l2_lmlm, m2_lmlm = np.asarray(countsR[:,:4],dtype=int).T
 bin1_lmlm, bin2_lmlm = np.asarray(np.loadtxt(R_file,skiprows=6,max_rows=2),dtype=int)
-RRR_lmlm = countsR[:,4::2]+1.0j*countsR[:,5::2]
+# Read-in and take complex conjugate (since definition involves a_lm^*)
+RRR_lmlm = countsR[:,4::2]-1.0j*countsR[:,5::2]
 
 assert len(np.unique(l1_lmlm))==n_ell
-assert len(np.unique(bin1_lm))==n_r
 
 #### Load in RNN_{lml'm'} piece
 countsN_all = []
@@ -131,7 +133,8 @@ for i in range(100):
     if not os.path.exists(DmR_file): continue
     # Extract counts
     tmp_counts = np.loadtxt(DmR_file,skiprows=8)
-    countsN_all.append(tmp_counts[:,4::2]+1.0j*tmp_counts[:,5::2])
+    # Read-in and take complex conjugate (since definition involves a_lm^*)
+    countsN_all.append(tmp_counts[:,4::2]-1.0j*tmp_counts[:,5::2])
 countsN_all = np.asarray(countsN_all)
 assert len(countsN_all)==N_files
 RNN_lmlm = np.mean(countsN_all,axis=0)*-1. # add -1 due to weight inversion
@@ -183,7 +186,7 @@ try:
 except IOError:
     print("Computing 4PCF coupling matrix for l_max = %d"%lmax)
 
-    # Form 4PCF coupling matrix, i.e. ThreeJ[l1,l2,l3,m1,m2,m3]
+    # Form 4PCF coupling matrix, i.e. (-1)^{l1+l2+l3} ThreeJ[l1,l2,l3,m1,m2,m3]
     fourpcf_coupling = np.zeros((nlm,nlm,nlm))
     for l in range(n_ell):
         for m in range(-l,l+1):
@@ -191,7 +194,7 @@ except IOError:
                 for mp in range(-lp,lp+1):
                     for L in range(n_ell):
                         for M in range(-L,L+1):
-                            tj = wigner_3j(l,lp,L,m,mp,M)
+                            tj = wigner_3j(l,lp,L,m,mp,M)*pow(-1.,l+lp+L)
                             if tj==0: continue
                             fourpcf_coupling[l**2+l+m,lp**2+lp+mp,L**2+L+M] = tj
 
@@ -205,6 +208,7 @@ ell_1, ell_2, ell_3 = [],[],[]
 for l1 in range(lmax+1):
     for l2 in range(lmax+1):
         for l3 in range(lmax+1):
+            # even-parity only!
             if pow(-1.,l1+l2+l3)==-1: continue
             if l3<np.abs(l1-l2): continue
             if l3>l1+l2: continue

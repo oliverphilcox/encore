@@ -1,14 +1,13 @@
 #!/bin/csh
 
 ##################### DOCUMENTATION #####################
-### Shell script for running the encore NPCF-estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
+### Shell script for running the C++ encore NPCF-estimator function on a data and data-random catalog, then combining the outputs, including edge-correction (Oliver Philcox, 2021).
 #
 # This can be run either from the terminal or as a SLURM script (using the below parameters).
 # The code should be compiled (with the relevant options, i.e. N-bins, ell-max and 4PCF/5PCF/6PCF) before this script is run. The isotropic 2PCF and 3PCF will always be computed.
 # The script should be run from the code directory
 # This is adapted from a similar script by Daniel Eisenstein.
-# In the input directory, we expect compressed .gz files labelled {root}.data.gz, {ranroot}.ran.{IJ}.gz
-# where {root} is a user-set name, and {IJ} indexes the random catalogs, from 0 - 31.
+# In the input directory, we expect compressed .gz files labelled {root}.data.gz, {ranroot}.ran.{IJ}.gz where {root} is a user-set name, and {IJ} indexes the random catalogs, from 0 - 31.
 # We expect the summed weights to be the same for the data and each random catalog, but the random weights should be negative
 # This script will compute the D^N counts, the (D-R)^N counts for 32 random subsets, and the R^N counts for one subset (should be sufficient).
 # If the connected flag is set (and -DDISCONNECTED added to the makefile) we compute also the Gaussian contribution to the 4PCF.
@@ -21,10 +20,10 @@
 
 #SBATCH -n 16 # cpus
 #SBATCH -N 1 # tasks
-#SBATCH -t 0-03:59:59 # time
+#SBATCH -t 0-02:59:59 # time
 #SBATCH --mem-per-cpu=1GB
-#SBATCH -o /home/ophilcox/out/boss4pcfS_run.%A.out         # File to which STDOUT will be written (make sure the directory exists!)
-#SBATCH -e /home/ophilcox/out/boss4pcfS_run.%A.err         # File to which STDERR will be written
+#SBATCH -o /home/ophilcox/out/boss4pcfSall_run.%A.out         # File to which STDOUT will be written (make sure the directory exists!)
+#SBATCH -e /home/ophilcox/out/boss4pcfSall_run.%A.err         # File to which STDERR will be written
 #SBATCH --mail-type=END,FAIL        # Type of email notification
 #SBATCH --mail-user=ophilcox@princeton.edu # Email to which notifications will be sent
 
@@ -46,7 +45,7 @@ set boxsize = 1000 # only used if periodic=1
 set root = boss_cmass # root for data filenames
 set ranroot = boss_cmass # root for random filenames
 set in = /projects/QUIJOTE/Oliver/npcf/data_sgc # input directory (see above for required contents)
-set out = /projects/QUIJOTE/Oliver/npcf/boss_4pcfS_production # output file directory
+set out = /projects/QUIJOTE/Oliver/npcf/boss_4pcfSall_production # output file directory
 set tmp = /scratch/gpfs/ophilcox/npcf4S_0 # temporary directory for intermediate file storage for this run (ideally somewhere with fast I/O)
 
 # Load some python environment with numpy and sympy installed
@@ -173,11 +172,11 @@ endif
 # If the file RRR_coupling exists we load the edge-correction matrix from file, else it is recomputed
 if ($connected) then
   if ($periodic) then
-    echo Combining files together to compute the disconnected 4PCF including edge corrections
-    python python/combine_disconnected_files.py $tmpout/$root 4 $RRR_coupling >>& $errlog
-  else
     echo Combining files together to compute the disconnected 4PCF without performing edge corrections
     python python/combine_disconnected_files_periodic.py $tmpout/$root 4 $Ngal $boxsize $rmin $rmax >>& $errlog
+  else
+    echo Combining files together to compute the disconnected 4PCF including edge corrections
+    python python/combine_disconnected_files.py $tmpout/$root 4 $RRR_coupling >>& $errlog
   endif
 endif
 

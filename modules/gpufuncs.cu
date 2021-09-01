@@ -14,6 +14,98 @@ thrust::complex<float>* f_alm, *f_almconj; //for use in float kernels
 
 //* ==== ADD TO POWER 4 KERNELS ==== *//
 
+// ALM COMPUTATION (in beta)
+
+__global__ void accumulate_multipoles_kernel(double *mult, int *mult_ct, double *x_array, double *y_array, double *z_array, double *w_array, int *bin_array, int length, int nmult, int order){
+	// Accumulate the powers of x^p y^q z^r into the mult array
+
+	//thread index i
+	int i = blockDim.x * blockIdx.x + threadIdx.x;
+	if (i >= length) return;
+
+	// Compute x,y,z
+	double x = x_array[i];
+	double y = y_array[i];
+	double z = z_array[i];
+	double w = w_array[i];
+	int bin = bin_array[i];
+
+	double fi, fij, fijk;
+	int count = bin*nmult;
+
+	mult_ct[bin]++;
+
+	fi = w;
+	for(int i=0;i<=order;i++) {
+			fij = fi;
+			for(int j=0;j<=order-i;j++) {
+					fijk = fij;
+					for(int k=0;k<=order-i-j;k++) {
+							mult[count++] += fijk;
+							fijk *= z;
+							}
+					fij *= y;
+					}
+			fi *= x;
+		}
+}
+
+void copy_mult(double **p_mult, double *mult, int **p_mult_ct, int *mult_ct, int size, int size_ct){
+	// copy back to host
+	cudaMemcpy(mult, (*p_mult), size*sizeof(double), cudaMemcpyDeviceToHost);
+	cudaMemcpy(mult_ct, (*p_mult_ct), size_ct*sizeof(int), cudaMemcpyDeviceToHost);
+}
+
+void gpu_free_mult(double *mult, int *mult_ct){
+	// free memory
+	cudaFree(mult);
+	cudaFree(mult_ct);
+}
+
+void gpu_allocate_mult(double **p_mult, double *mult, int **p_mult_ct, int *mult_ct, int size, int size_ct) {
+  cudaMallocManaged(&(*p_mult), size*sizeof(double));
+	double *d_mult = *(p_mult);
+	for (int i = 0; i < size; i++) d_mult[i] = mult[i];
+	cudaMallocManaged(&(*p_mult_ct), size_ct*sizeof(int));
+	int *d_mult_ct = *(p_mult_ct);
+	for (int i = 0; i < size_ct; i++) d_mult_ct[i] = mult_ct[i];
+}
+
+void accumulate_multipoles(double *d_mult, int *d_mult_ct, double *x_array, double *y_array, double *z_array, double *w_array, int *bin_array, int length, int max_length, int nmult, int order) {
+
+	// array allocations for device
+	double *dx_array, *dy_array, *dz_array, *dw_array;
+	int *dbin_array;
+  cudaMalloc(&dx_array, max_length*sizeof(double));
+	cudaMalloc(&dy_array, max_length*sizeof(double));
+	cudaMalloc(&dz_array, max_length*sizeof(double));
+	cudaMalloc(&dw_array, max_length*sizeof(double));
+	cudaMalloc(&dbin_array, max_length*sizeof(int));
+
+	cudaMemcpy(dx_array, x_array, max_length*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(dy_array, y_array, max_length*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(dz_array, z_array, max_length*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(dw_array, w_array, max_length*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(dbin_array, bin_array, max_length*sizeof(int), cudaMemcpyHostToDevice);
+
+  // Invoke kernel
+  int threadsPerBlock = 512;
+  long threads = length;
+  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+
+	accumulate_multipoles_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_mult,d_mult_ct,dx_array,dy_array,dz_array,dw_array,dbin_array,length,nmult,order);
+
+	// Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
+  cudaFree(dx_array);
+	cudaFree(dy_array);
+	cudaFree(dz_array);
+	cudaFree(dw_array);
+  cudaFree(dbin_array);
+}
+
+// NPCF kernels
+
 __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
 	int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
@@ -1546,6 +1638,7 @@ void gpu_free_memory_m(int *lut5_m1, int *lut5_m2, int *lut5_m3) {
   cudaFree(lut5_m3);
 }
 
+
 //* ==== FREE ALMS ==== *//
 
 void gpu_free_memory_alms(bool isDouble) {
@@ -1928,6 +2021,7 @@ void gpu_add_to_power5_orig_float(float *d_fivepcf, float *d_weight5pcf,
 
   add_to_power5_kernel_orig_float<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
         d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
+
         lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nlm, nouter, ninner, almidx);

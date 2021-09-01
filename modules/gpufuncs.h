@@ -1,4 +1,20 @@
 
+// alm accumulation code
+void accumulate_multipoles(double *d_mult, int *d_mult_ct, double *x_array, double *y_array,
+                           double *z_array, double *w_array, int *bin_array,
+                          int length, int max_length, int nmult, int order);
+
+// alm accumulation code
+void accumulate_multipoles2(double *d_mult, int *d_mult_ct, double *x_array, double *y_array,
+                           double *z_array, double *w_array, int *bin_array,
+                          int length, int max_length, int nmult, int order);
+
+void copy_mult(double **p_mult, double *mult, int **p_mult_ct, int *mult_ct, int size, int size_ct);
+
+void gpu_free_mult(double *mult, int *mult_ct);
+
+void gpu_allocate_mult(double **p_mult, double *mult, int **p_mult_ct, int *mult_ct, int size, int size_ct);
+
 //run main kernel gpu == 1
 void gpu_add_to_power4(double *d_fourpcf, double *d_weight4pcf, 
         int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
