@@ -18,6 +18,7 @@
 
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 // We output only NPCF with bin1 < bin2 < bin3 etc. to avoid degeneracy and the bins including zero separations
+// IF NBIN is changed IT MUST ALSO BE UPDATED IN modules/gpufuncs.h!
 #define NBIN 20
 
 // ORDER is the order of the Ylm we'll compute.
@@ -45,8 +46,14 @@ typedef std::complex<double> Complex;
 //1 = GPU primary kernel
 //2, higher = alternate kernels
 short _gpumode = 0;
+//kernel for multipoles and pairs -- 2 = new kernel, 1 = old kernel
+short _gpump = 2;
 bool _gpufloat = false;
 bool _gpumixed = false;
+//if true, use shared memory for x0i and x2i binning, if false use global memory
+bool _shared = true;
+//if true, calculate 2PCF only
+bool _only2pcf = false;
 
 // We need a vector floor3 function
 Float3 floor3(float3 p) {
@@ -260,6 +267,9 @@ void usage() {
     fprintf(stderr, "    -gpu: GPU mode => 0 = CPU, 1 = GPU, 2+ = GPU alternate kernel. This requires compilation in GPU mode.\n");
     fprintf(stderr, "    -float: GPU mode => use floats to speed up\n");
     fprintf(stderr, "    -mixed: GPU mode => use mixed precision - alms are floats, accumulation is doubles\n");
+    fprintf(stderr, "    -global: GPU mode => use global memory always.  Default is to offload some calcs to shared memory.\n");
+    fprintf(stderr, "             Shared is faster on HPC GPUs but global is faster on some consumer grade GPUs.\n");
+    fprintf(stderr, "    -2pcf: GPU mode => only calculate 2PCF and exit\n");
 
     exit(1);
     return;
@@ -332,6 +342,9 @@ int main(int argc, char *argv[]) {
 	else if (!strcmp(argv[i],"-gpu")) _gpumode = atoi(argv[++i]);
         else if (!strcmp(argv[i],"-float")) _gpufloat = true;
         else if (!strcmp(argv[i],"-mixed")) _gpumixed = true;
+        else if (!strcmp(argv[i],"-global")) _shared = false;
+	else if (!strcmp(argv[i],"-mpkernel")) _gpump = atoi(argv[++i]);
+	else if (!strcmp(argv[i],"-2pcf")) _only2pcf = true;
 #endif
 	else {
 	    fprintf(stderr, "Don't recognize %s\n", argv[i]);
