@@ -9,10 +9,10 @@
 int count = 0;
 int pstart = 0; //particle number used for indexing
 int pstart5 = 0;
+int pstart3 = 0;
 thrust::complex<double>* d_alm, *d_almconj; //define d_alm and d_almconj here
 thrust::complex<float>* f_alm, *f_almconj; //for use in float kernels
 
-//* ==== ADD TO POWER 4 KERNELS ==== *//
 
 // ALM COMPUTATION (in beta)
 
@@ -89,11 +89,10 @@ void accumulate_multipoles(double *d_mult, int *d_mult_ct, double *x_array, doub
 	cudaMemcpy(dbin_array, bin_array, max_length*sizeof(int), cudaMemcpyHostToDevice);
 
   // Invoke kernel
-  int threadsPerBlock = 512;
   long threads = length;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-	accumulate_multipoles_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_mult,d_mult_ct,dx_array,dy_array,dz_array,dw_array,dbin_array,length,nmult,order);
+	accumulate_multipoles_kernel<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_mult,d_mult_ct,dx_array,dy_array,dz_array,dw_array,dbin_array,length,nmult,order);
 
 	// Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
@@ -104,7 +103,109 @@ void accumulate_multipoles(double *d_mult, int *d_mult_ct, double *x_array, doub
   cudaFree(dbin_array);
 }
 
-// NPCF kernels
+// ======================================================= /
+//  GPU KERNELS                                            /
+// ======================================================= /
+
+
+// ======================================================= /
+//  ALL ADD_TO_POWER FUNCTIONS ARE HERE                    /
+// ======================================================= /
+
+//3PCF kernels
+//Only 1 kernel option for 3CF, 3 precision modes
+__global__ void add_to_power3_kernel_orig(double *threepcf, double *weight3pcf,
+        double *weights, thrust::complex<double>* alm, thrust::complex<double> *almconj,
+        int *lut3_i, int *lut3_j, int *lut3_ct, int nb, int nlm,
+	int nouter, int order, int np, int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= nouter * np) return;
+    //compute indices for LUTs
+    int ip = i/nouter; //particle number
+    int iouter = i%nouter; //index in LUTs
+    //outer loop indices
+    int ii = lut3_i[iouter];
+    int jj = lut3_j[iouter];
+    int ct = lut3_ct[iouter];
+    int almidx = ip*nb*nlm;
+    //calc weight
+    double wp = weights[ip+pstart];
+    //calc indices outside of loop
+    int idx1 = almidx+ii*nlm;
+    int idx2 = almidx+jj*nlm;
+
+    for (int ell=0, n=0; ell<=order; ell++) {
+      for (int mm=0; mm<=ell; mm++, n++) {
+        atomicAdd(&threepcf[ell*nouter+ct], wp*(alm[idx1+n]*almconj[idx2+n]).real()*weight3pcf[n]);
+      }
+    }
+}
+
+__global__ void add_to_power3_kernel_orig_float(float *threepcf, float *weight3pcf,
+        double *weights, thrust::complex<float>* alm, thrust::complex<float> *almconj,
+        int *lut3_i, int *lut3_j, int *lut3_ct, int nb, int nlm,
+        int nouter, int order, int np, int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= nouter * np) return;
+    //compute indices for LUTs
+    int ip = i/nouter; //particle number
+    int iouter = i%nouter; //index in LUTs
+    //outer loop indices
+    int ii = lut3_i[iouter];
+    int jj = lut3_j[iouter];
+    int ct = lut3_ct[iouter];
+    int almidx = ip*nb*nlm;
+    //calc weight
+    float wp = (float)weights[ip+pstart];
+    //calc indices outside of loop
+    int idx1 = almidx+ii*nlm;
+    int idx2 = almidx+jj*nlm;
+
+    for (int ell=0, n=0; ell<=order; ell++) {
+      for (int mm=0; mm<=ell; mm++, n++) {
+        atomicAdd(&threepcf[ell*nouter+ct], wp*(alm[idx1+n]*almconj[idx2+n]).real()*weight3pcf[n]);
+      }
+    }
+}
+
+__global__ void add_to_power3_kernel_orig_mixed(double *threepcf, double *weight3pcf,
+        double *weights, thrust::complex<float>* alm, thrust::complex<float> *almconj,
+        int *lut3_i, int *lut3_j, int *lut3_ct, int nb, int nlm,
+        int nouter, int order, int np, int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= nouter * np) return;
+    //compute indices for LUTs
+    int ip = i/nouter; //particle number
+    int iouter = i%nouter; //index in LUTs
+    //outer loop indices
+    int ii = lut3_i[iouter];
+    int jj = lut3_j[iouter];
+    int ct = lut3_ct[iouter]; 
+    int almidx = ip*nb*nlm;
+    //calc weight
+    float wp = (float)weights[ip+pstart];
+    //calc indices outside of loop
+    int idx1 = almidx+ii*nlm;
+    int idx2 = almidx+jj*nlm;
+
+    for (int ell=0, n=0; ell<=order; ell++) {
+      for (int mm=0; mm<=ell; mm++, n++) {
+        atomicAdd(&threepcf[ell*nouter+ct], wp*(alm[idx1+n]*almconj[idx2+n]).real()*weight3pcf[n]);
+      }
+    }
+}
+
+
+// ======================================================= /
+
+//4PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
 
 __global__ void add_to_power4_kernel(double *fourpcf, double *weight4pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
@@ -422,6 +523,7 @@ __global__ void add_to_power4_kernel_orig(double *fourpcf, double *weight4pcf,
     //double delta = weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real(); //even parity
     //atomicAdd(&fourpcf[bin_index], delta);
     if (odd) atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag()); else atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real());
+    //atomicAdd(&fourpcf[bin_index], 1);
 }
 
 __global__ void add_to_power4_kernel_orig_float(float *fourpcf,
@@ -510,7 +612,10 @@ __global__ void add_to_power4_kernel_orig_mixed(double *fourpcf,
     if (odd) atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).imag()); else atomicAdd(&fourpcf[bin_index],weight*(alm2*alm[almidx+k*nlm+tmp_lm3]).real());
 }
 
-//* ==== ADD TO POWER 5 KERNELS ==== *//
+// ======================================================= /
+
+//5PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
 
 __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf,
 	thrust::complex<double>* alm, thrust::complex<double> *almconj,
@@ -976,178 +1081,10 @@ __global__ void add_to_power5_kernel_orig_mixed(double *fivepcf,
     if (odd) atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag()); else atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real());
 }
 
-//* ==== ADD PAIRS AND MULTIPOLES ==== *//
 
-/****   Add particles methods ****/
-
-__global__ void add_pairs_and_multipoles_kernel(double *m, double *posx,
-	double *posy, double *posz, double *w, int *ct, int *pnum, int *spnum,
-	int *snp, int *sc, double *x0i, double *x2i, int n, int nbin,
-	int order, int nmult, float rmin, float rmax, float rmin2,
-	float rmax2, int pstart) {
-    //m = np * nbin * nmult length
-    //ct = np * nbin length
-    //posx, posy, posz, ww = length np (every particle)
-    //pnum = primary particle idx (j) = length i
-    //spnum = secondary particle idx (k) = length i
-    //thread index i
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i >= n) return;
-
-    int samecell = sc[i];
-    int j = pnum[i];
-    int st = spnum[i];
-    int np = snp[i];
-
-    int bin;
-    double dx, dy, dz, norm2;
-    double bin_factor = (double)nbin/(rmax-rmin);
-    double pair_w;
-
-    //take multiplication out of loop
-    int idx1 = (j-pstart)*nbin*nmult;
-    int idx2;
-    int cidx = (j-pstart)*nbin;
-
-    for (int k = st; k < st+np; k++) {
-      if (samecell && j == k) continue;
-
-      dx = posx[k] - posx[j];
-      dy = posy[k] - posy[j];
-      dz = posz[k] - posz[j];
-      norm2 = (dx*dx + dy*dy + dz*dz);
-      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
-
-      norm2 = sqrt(norm2);
-      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
-      bin = floor((norm2-rmin)*bin_factor);
-      //take multiplication out of loop
-      idx2 = idx1+bin*nmult;
-      dx /= norm2;
-      dy /= norm2;
-      dz /= norm2;
-
-      // Accumulate the 2-pt correlation function
-      pair_w = w[k]*w[j];
-      atomicAdd(&x0i[bin], pair_w);
-      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
-
-      //Multipoles
-      atomicAdd(&ct[cidx+bin], 1);
-
-      double fi, fij, fijk;
-      int midx = 0;
-
-      double sum = 0;
-
-      fi = w[k];
-      for (int ii = 0; ii <= order; ii++) {
-        fij = fi;
-        for (int jj = 0; jj <= order-ii; jj++) {
-          fijk = fij;
-          for (int kk = 0; kk <= order-ii-jj; kk++) {
-            sum += fijk;
-            fijk *= dz;
-            //now incrementing to next index - copy sum to this index
-            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
-	    atomicAdd(&m[idx2+midx], sum);
-            sum = 0;
-            midx++;
-          }
-          fij *= dy;
-        }
-        fi *= dx;
-      }
-    }
-}
-
-__global__ void add_pairs_and_multipoles_periodic_kernel(double *m,
-	double *posx, double *posy, double *posz, double *w, int *ct,
-	int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
-	int *delta_x, int *delta_y, int *delta_z, int n, int nbin, int order,
-	int nmult, float rmin, float rmax, float rmin2, float rmax2,
-	int pstart, double cellsize) {
-    //m = np * nbin * nmult length
-    //ct = np * nbin length
-    //posx, posy, posz, ww = length np (every particle)
-    //pnum = primary particle idx (j) = length i
-    //spnum = secondary particle idx (k) = length i
-    //thread index i
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i >= n) return;
-
-    int samecell = sc[i];
-    int j = pnum[i];
-    int st = spnum[i];
-    int np = snp[i];
-
-    int bin;
-    double dx, dy, dz, norm2;
-    double bin_factor = (double)nbin/(rmax-rmin);
-    double pair_w;
-
-    //periodic calcs
-    double ppos_x, ppos_y, ppos_z; //primary particle pos
-    ppos_x = posx[j]-delta_x[i]*cellsize;
-    ppos_y = posy[j]-delta_y[i]*cellsize;
-    ppos_z = posz[j]-delta_z[i]*cellsize;
-
-    //take multiplication out of loop
-    int idx1 = (j-pstart)*nbin*nmult;
-    int idx2;
-    int cidx = (j-pstart)*nbin;
-
-    for (int k = st; k < st+np; k++) {
-      if (samecell && j == k) continue;
-
-      dx = posx[k] - ppos_x; 
-      dy = posy[k] - ppos_y; 
-      dz = posz[k] - ppos_z; 
-      norm2 = (dx*dx + dy*dy + dz*dz);
-      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
-
-      norm2 = sqrt(norm2);
-      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
-      bin = floor((norm2-rmin)*bin_factor);
-      //take multiplication out of loop
-      idx2 = idx1+bin*nmult;
-      dx /= norm2;
-      dy /= norm2;
-      dz /= norm2;
-
-      // Accumulate the 2-pt correlation function
-      pair_w = w[k]*w[j];
-      atomicAdd(&x0i[bin], pair_w);
-      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
-
-      //Multipoles
-      atomicAdd(&ct[cidx+bin], 1);
-
-      double fi, fij, fijk;
-      int midx = 0;
-
-      double sum = 0;
-
-      fi = w[k];
-      for (int ii = 0; ii <= order; ii++) {
-        fij = fi;
-        for (int jj = 0; jj <= order-ii; jj++) {
-          fijk = fij;
-          for (int kk = 0; kk <= order-ii-jj; kk++) {
-            sum += fijk;
-            fijk *= dz;
-            //now incrementing to next index - copy sum to this index
-            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
-            atomicAdd(&m[idx2+midx], sum);
-            sum = 0;
-            midx++;
-          }
-          fij *= dy;
-        }
-        fi *= dx;
-      }
-    }
-}
+// ======================================================= /
+//  ALL ALM FUNCTIONS ARE HERE                             /
+// ======================================================= /
 
 __device__ double CM(double *m, int *map, int mapdim, int md2, int startidx, 
 	int a, int b, int c) {
@@ -1424,8 +1361,3226 @@ __global__ void compute_alms_float(thrust::complex<float>* alm, thrust::complex<
 }
 
 
-//* ==== CPU METHODS ==== *//
-//* ==== Allocate LUTs 4 ==== *//
+// ======================================================= /
+//  PAIRS AND MULTIPOLES ACCUMULATION                      /
+// ======================================================= /
+
+// HELPER METHODS
+
+__device__ int test_cell(int3 cell, int3 nside_cuboid, int ncells) {
+    if (nside_cuboid.x <= cell.x ||cell.x < 0 ||nside_cuboid.y <= cell.y || cell.y < 0 || nside_cuboid.z <= cell.z || cell.z < 0) {
+      return -1;
+    }
+    int answer = (cell.x*nside_cuboid.y+cell.y)*nside_cuboid.z+cell.z;
+    return answer;
+}
+
+__device__ int test_cell_periodic(int3 cell, int3 nside_cuboid, int ncells) {
+    // Return the 1-d cell number, after wrapping
+    // We apply a very large bias, so that we're
+    // guaranteed to wrap any reasonable input.
+    int cx = (cell.x+ncells)%nside_cuboid.x;
+    int cy = (cell.y+ncells)%nside_cuboid.y;
+    int cz = (cell.z+ncells)%nside_cuboid.z;
+    int answer = (cx*nside_cuboid.y+cy)*nside_cuboid.z+cz;
+    return answer;
+}
+
+__device__ int3 cell_id_from_1d(int n, int3 nside_cuboid) {
+    // Undo 1d back to 3-d indexing
+    int3 cid;
+    cid.z = n%nside_cuboid.z;
+    n = n/nside_cuboid.z;
+    cid.y = n%nside_cuboid.y;
+    cid.x = n/nside_cuboid.y;
+    return cid;
+}
+
+/****   Add particles methods ****/
+// We have 16 methods for each of pairs_only and pairs_and_multipoles
+// DEFAULTS in CAPS
+// NORMAL mode or periodic
+// original kernel or FAST
+// SHARED vs global memory
+// DOUBLE vs float
+
+
+//PAIRS ONLY
+
+__global__ void add_pairs_only_kernel(double *posx, double *posy, double *posz,
+	double *w, int *pnum, int *spnum, int *snp, int *sc,
+	double *x0i, double *x2i, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    double wj = w[j];
+    double pxj = posx[j];
+    double pyj = posy[j];
+    double pzj = posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_kernel_float(double *posx, double *posy,
+	double *posz, double *w, int *pnum, int *spnum, int *snp, int *sc,
+	double *x0i, double *x2i, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    float wj = (float)w[j];
+    float pxj = (float)posx[j];
+    float pyj = (float)posy[j];
+    float pzj = (float)posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = (float)posx[k] - pxj;
+      dy = (float)posy[k] - pyj;
+      dz = (float)posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_kernel_shared(double *posx, double *posy,
+	double *posz, double *w, int *pnum, int *spnum, int *snp, int *sc,
+	double *x0i, double *x2i, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    double wj = w[j];
+    double pxj = posx[j];
+    double pyj = posy[j];
+    double pzj = posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_kernel_float_shared(double *posx, double *posy,
+	double *posz, double *w, int *pnum, int *spnum, int *snp, int *sc,
+	double *x0i, double *x2i, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    float wj = (float)w[j];
+    float pxj = (float)posx[j];
+    float pyj = (float)posy[j];
+    float pzj = (float)posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = (float)posx[k] - pxj;
+      dy = (float)posy[k] - pyj;
+      dz = (float)posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_kernel_fast(double *posx, double *posy,
+	double *posz, double *w, int *start_list, int *np_list,
+	int *cellnums, double *x0i, double *x2i, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int3 nside_cuboid, int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    double wj = w[j];
+    double pxj = posx[j];
+    double pyj = posy[j];
+    double pzj = posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+
+}
+
+__global__ void add_pairs_only_kernel_fast_shared(double *posx, double *posy,
+	double *posz, double *w, int *start_list, int *np_list, int *cellnums,
+	double *x0i, double *x2i, int n, int nbin, int order, int nmult,
+	float rmin, float rmax, float rmin2, float rmax2, int3 nside_cuboid,
+	int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin = 0;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+
+    //dont return because need to syncthreads
+    if (tmp_test >= 0 && tmp_test < ncells) {
+      int st = start_list[tmp_test];
+      int np = np_list[tmp_test];
+
+      double wj = w[j];
+      double pxj = posx[j];
+      double pyj = posy[j];
+      double pzj = posz[j];
+
+      for (int k = st; k < st+np; k++) {
+        if (samecell && j == k) continue;
+
+        dx = posx[k] - pxj;
+        dy = posy[k] - pyj;
+        dz = posz[k] - pzj;
+        norm2 = (dx*dx + dy*dy + dz*dz);
+        if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+        norm2 = sqrt(norm2);
+        bin = floor((norm2-rmin)*bin_factor);
+        dz /= norm2;
+
+        // Accumulate the 2-pt correlation function
+        //pair_w = w[k]*w[j];
+        pair_w = w[k]*wj;
+        atomicAdd(&sx0i[bin], pair_w);
+        atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_kernel_fast_float(double *posx, double *posy,
+	double *posz, double *w, int *start_list, int *np_list, int *cellnums,
+	double *x0i, double *x2i, int n, int nbin, int order, int nmult,
+	float rmin, float rmax, float rmin2, float rmax2, int3 nside_cuboid,
+	int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    float wj = (float)w[j];
+    float pxj = (float)posx[j];
+    float pyj = (float)posy[j];
+    float pzj = (float)posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_kernel_fast_float_shared(double *posx,
+	double *posy, double *posz, double *w, int *start_list, int *np_list,
+	int *cellnums, double *x0i, double *x2i, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int3 nside_cuboid, int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin = 0;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+
+    //dont return because need to syncthreads
+    if (tmp_test >= 0 && tmp_test < ncells) {
+      int st = start_list[tmp_test];
+      int np = np_list[tmp_test];
+
+      float wj = (float)w[j];
+      float pxj = (float)posx[j];
+      float pyj = (float)posy[j];
+      float pzj = (float)posz[j];
+
+      for (int k = st; k < st+np; k++) {
+        if (samecell && j == k) continue;
+
+        dx = posx[k] - pxj;
+        dy = posy[k] - pyj;
+        dz = posz[k] - pzj;
+        norm2 = (dx*dx + dy*dy + dz*dz);
+        if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+        norm2 = sqrt(norm2);
+        bin = floor((norm2-rmin)*bin_factor);
+        dz /= norm2;
+
+        // Accumulate the 2-pt correlation function
+        //pair_w = w[k]*w[j];
+        pair_w = w[k]*wj;
+        atomicAdd(&sx0i[bin], pair_w);
+        atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_periodic_kernel(double *posx, double *posy,
+	double *posz, double *w, int *pnum, int *spnum, int *snp, int *sc,
+	double *x0i, double *x2i, int *delta_x, int *delta_y, int *delta_z,
+	int n, int nbin, float rmin, float rmax, float rmin2, float rmax2,
+	double cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-delta_x[i]*cellsize;
+    ppos_y = posy[j]-delta_y[i]*cellsize;
+    ppos_z = posz[j]-delta_z[i]*cellsize;
+    double wj = w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x;
+      dy = posy[k] - ppos_y;
+      dz = posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_periodic_kernel_float(double *posx,
+	double *posy, double *posz, double *w, int *pnum, int *spnum,
+	int *snp, int *sc, double *x0i, double *x2i,
+        int *delta_x, int *delta_y, int *delta_z, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2, float cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)posx[j]-delta_x[i]*cellsize;
+    ppos_y = (float)posy[j]-delta_y[i]*cellsize;
+    ppos_z = (float)posz[j]-delta_z[i]*cellsize;
+    float wj = (float)w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x;
+      dy = (float)posy[k] - ppos_y;
+      dz = (float)posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_periodic_kernel_shared(double *posx,
+	double *posy, double *posz, double *w, int *pnum, int *spnum,
+	int *snp, int *sc, double *x0i, double *x2i,
+        int *delta_x, int *delta_y, int *delta_z, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2, double cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-delta_x[i]*cellsize;
+    ppos_y = posy[j]-delta_y[i]*cellsize;
+    ppos_z = posz[j]-delta_z[i]*cellsize;
+    double wj = w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x;
+      dy = posy[k] - ppos_y;
+      dz = posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_periodic_kernel_float_shared(double *posx,
+	double *posy, double *posz, double *w, int *pnum, int *spnum,
+	int *snp, int *sc, double *x0i, double *x2i,
+        int *delta_x, int *delta_y, int *delta_z, int n, int nbin, 
+        float rmin, float rmax, float rmin2, float rmax2, float cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)posx[j]-delta_x[i]*cellsize;
+    ppos_y = (float)posy[j]-delta_y[i]*cellsize;
+    ppos_z = (float)posz[j]-delta_z[i]*cellsize;
+    float wj = (float)w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x;
+      dy = (float)posy[k] - ppos_y;
+      dz = (float)posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_periodic_kernel_fast(double *posx, double *posy,
+	double *posz, double *w, int *start_list, int *np_list, int *cellnums,
+	double *x0i, double *x2i, int n, int nbin, int order, int nmult,
+	float rmin, float rmax, float rmin2, float rmax2, int3 nside_cuboid,
+	int ncells, int maxsep, int pstart, double cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-deltax*cellsize;
+    ppos_y = posy[j]-deltay*cellsize;
+    ppos_z = posz[j]-deltaz*cellsize;
+    double wj = w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x;
+      dy = posy[k] - ppos_y;
+      dz = posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_periodic_kernel_fast_shared(double *posx,
+	double *posy, double *posz, double *w, int *start_list, int *np_list,
+	int *cellnums, double *x0i, double *x2i, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int3 nside_cuboid, int ncells, int maxsep, int pstart,
+	double cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-deltax*cellsize;
+    ppos_y = posy[j]-deltay*cellsize;
+    ppos_z = posz[j]-deltaz*cellsize;
+    double wj = w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x;
+      dy = posy[k] - ppos_y;
+      dz = posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_only_periodic_kernel_fast_float(double *posx,
+	double *posy, double *posz, double *w, int *start_list, int *np_list,
+	int *cellnums, double *x0i, double *x2i, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int3 nside_cuboid, int ncells, int maxsep, int pstart,
+	float cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)posx[j]-deltax*cellsize;
+    ppos_y = (float)posy[j]-deltay*cellsize;
+    ppos_z = (float)posz[j]-deltaz*cellsize;
+    float wj = (float)w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x;
+      dy = (float)posy[k] - ppos_y;
+      dz = (float)posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+}
+
+__global__ void add_pairs_only_periodic_kernel_fast_float_shared(double *posx,
+	double *posy, double *posz, double *w, int *start_list, int *np_list,
+	int *cellnums, double *x0i, double *x2i, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int3 nside_cuboid, int ncells, int maxsep, int pstart,
+	float cellsize) {
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)posx[j]-deltax*cellsize;
+    ppos_y = (float)posy[j]-deltay*cellsize;
+    ppos_z = (float)posz[j]-deltaz*cellsize;
+    float wj = (float)w[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x;
+      dy = (float)posy[k] - ppos_y;
+      dz = (float)posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+// ======================================================= /
+//PAIRS AND MULTIPOLES
+
+__global__ void add_pairs_and_multipoles_kernel(double *m, double *posx,
+	double *posy, double *posz, double *w, int *ct, int *pnum, int *spnum,
+	int *snp, int *sc, double *x0i, double *x2i, int n, int nbin,
+	int order, int nmult, float rmin, float rmax, float rmin2,
+	float rmax2, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    double wj = w[j];
+    double pxj = posx[j];
+    double pyj = posy[j];
+    double pzj = posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      //pair_w = w[k]*w[j];
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+	    atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_kernel_shared(double *m, double *posx,
+	double *posy, double *posz, double *w, int *ct, int *pnum, int *spnum,
+	int *snp, int *sc, double *x0i, double *x2i, int n, int nbin,
+	int order, int nmult, float rmin, float rmax, float rmin2,
+	float rmax2, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    double wj = w[j];
+    double pxj = posx[j];
+    double pyj = posy[j];
+    double pzj = posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      //pair_w = w[k]*w[j];
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+	    atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_and_multipoles_kernel_float(double *m, double *posx,
+        double *posy, double *posz, double *w, int *ct, int *pnum, int *spnum,
+        int *snp, int *sc, double *x0i, double *x2i, int n, int nbin,
+        int order, int nmult, float rmin, float rmax, float rmin2,
+        float rmax2, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    float wj = (float)w[j];
+    float pxj = (float)posx[j];
+    float pyj = (float)posy[j];
+    float pzj = (float)posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = (float)posx[k] - pxj;
+      dy = (float)posy[k] - pyj;
+      dz = (float)posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      //pair_w = w[k]*w[j];
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = (float)w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_kernel_float_shared(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
+	int n, int nbin, int order, int nmult, float rmin, float rmax,
+	float rmin2, float rmax2, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    float wj = (float)w[j];
+    float pxj = (float)posx[j];
+    float pyj = (float)posy[j];
+    float pzj = (float)posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+      dx = (float)posx[k] - pxj;
+      dy = (float)posy[k] - pyj;
+      dz = (float)posz[k] - pzj;
+
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      //pair_w = w[k]*w[j];
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = (float)w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+
+__global__ void add_pairs_and_multipoles_kernel_fast(double *m, double *posx,
+	double *posy, double *posz, double *w, int *ct, int *start_list,
+	int *np_list, int *cellnums, double *x0i, double *x2i, int n,
+	int nbin, int order, int nmult, float rmin, float rmax, float rmin2,
+	float rmax2, int3 nside_cuboid, int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    double wj = w[j];
+    double pxj = posx[j];
+    double pyj = posy[j];
+    double pzj = posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+      fij = fi;
+      for (int jj = 0; jj <= order-ii; jj++) {
+        fijk = fij;
+        for (int kk = 0; kk <= order-ii-jj; kk++) {
+          sum += fijk;
+          fijk *= dz;
+          //now incrementing to next index - copy sum to this index
+          atomicAdd(&m[idx2+midx], sum);
+          sum = 0;
+          midx++;
+        }
+        fij *= dy;
+      }
+      fi *= dx;
+      }
+    }
+
+}
+
+__global__ void add_pairs_and_multipoles_kernel_fast_shared(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid,
+	int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin = 0;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+
+    //dont return because need to syncthreads
+    if (tmp_test >= 0 && tmp_test < ncells) {
+      int st = start_list[tmp_test];
+      int np = np_list[tmp_test];
+
+      //take multiplication out of loop
+      int idx1 = (j-pstart)*nbin*nmult;
+      int idx2;
+      int cidx = (j-pstart)*nbin;
+
+      double wj = w[j];
+      double pxj = posx[j];
+      double pyj = posy[j];
+      double pzj = posz[j];
+
+      for (int k = st; k < st+np; k++) {
+        if (samecell && j == k) continue;
+
+        dx = posx[k] - pxj;
+        dy = posy[k] - pyj;
+        dz = posz[k] - pzj;
+        norm2 = (dx*dx + dy*dy + dz*dz);
+        if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+        norm2 = sqrt(norm2);
+        bin = floor((norm2-rmin)*bin_factor);
+
+        //take multiplication out of loop
+        idx2 = idx1+bin*nmult;
+        dx /= norm2;
+        dy /= norm2;
+        dz /= norm2;
+
+        // Accumulate the 2-pt correlation function
+        //pair_w = w[k]*w[j];
+        pair_w = w[k]*wj;
+        atomicAdd(&sx0i[bin], pair_w);
+        atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+        //Multipoles
+        atomicAdd(&ct[cidx+bin], 1);
+
+        double fi, fij, fijk;
+        int midx = 0;
+
+        double sum = 0;
+
+        fi = w[k];
+        for (int ii = 0; ii <= order; ii++) {
+          fij = fi;
+          for (int jj = 0; jj <= order-ii; jj++) {
+            fijk = fij;
+            for (int kk = 0; kk <= order-ii-jj; kk++) {
+              sum += fijk;
+              fijk *= dz;
+              //now incrementing to next index - copy sum to this index
+              //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+              atomicAdd(&m[idx2+midx], sum);
+              sum = 0;
+              midx++;
+            }
+            fij *= dy;
+          }
+          fi *= dx;
+        }
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_and_multipoles_kernel_fast_float(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid,
+	int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    float wj = (float)w[j];
+    float pxj = (float)posx[j];
+    float pyj = (float)posy[j];
+    float pzj = (float)posz[j];
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - pxj;
+      dy = posy[k] - pyj;
+      dz = posz[k] - pzj;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = (float)w[k];
+      for (int ii = 0; ii <= order; ii++) {
+      fij = fi;
+      for (int jj = 0; jj <= order-ii; jj++) {
+        fijk = fij;
+        for (int kk = 0; kk <= order-ii-jj; kk++) {
+          sum += fijk;
+          fijk *= dz;
+          //now incrementing to next index - copy sum to this index
+          atomicAdd(&m[idx2+midx], sum);
+          sum = 0;
+          midx++;
+        }
+        fij *= dy;
+      }
+      fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_kernel_fast_float_shared(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid,
+	int ncells, int maxsep, int pstart) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin = 0;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell(cell_loc, nside_cuboid, ncells);
+
+    //dont return because need to syncthreads
+    if (tmp_test >= 0 && tmp_test < ncells) {
+      int st = start_list[tmp_test];
+      int np = np_list[tmp_test];
+
+      //take multiplication out of loop
+      int idx1 = (j-pstart)*nbin*nmult;
+      int idx2;
+      int cidx = (j-pstart)*nbin;
+
+      float wj = (float)w[j];
+      float pxj = (float)posx[j];
+      float pyj = (float)posy[j];
+      float pzj = (float)posz[j];
+
+      for (int k = st; k < st+np; k++) {
+        if (samecell && j == k) continue;
+
+        dx = posx[k] - pxj;
+        dy = posy[k] - pyj;
+        dz = posz[k] - pzj;
+        norm2 = (dx*dx + dy*dy + dz*dz);
+        if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+        norm2 = sqrt(norm2);
+        bin = floor((norm2-rmin)*bin_factor);
+
+        //take multiplication out of loop
+        idx2 = idx1+bin*nmult;
+        dx /= norm2;
+        dy /= norm2;
+        dz /= norm2;
+
+        // Accumulate the 2-pt correlation function
+        //pair_w = w[k]*w[j];
+        pair_w = w[k]*wj;
+        atomicAdd(&sx0i[bin], pair_w);
+        atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+        //Multipoles
+        atomicAdd(&ct[cidx+bin], 1);
+
+        float fi, fij, fijk;
+        int midx = 0;
+
+        float sum = 0;
+
+        fi = (float)w[k];
+        for (int ii = 0; ii <= order; ii++) {
+          fij = fi;
+          for (int jj = 0; jj <= order-ii; jj++) {
+            fijk = fij;
+            for (int kk = 0; kk <= order-ii-jj; kk++) {
+              sum += fijk;
+              fijk *= dz;
+              //now incrementing to next index - copy sum to this index
+              //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+              atomicAdd(&m[idx2+midx], sum);
+              sum = 0;
+              midx++;
+            }
+            fij *= dy;
+          }
+          fi *= dx;
+        }
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
+	int *delta_x, int *delta_y, int *delta_z, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int pstart, double cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+    
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-delta_x[i]*cellsize;
+    ppos_y = posy[j]-delta_y[i]*cellsize;
+    ppos_z = posz[j]-delta_z[i]*cellsize;
+    double wj = w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x; 
+      dy = posy[k] - ppos_y; 
+      dz = posz[k] - ppos_z; 
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_shared(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
+	int *delta_x, int *delta_y, int *delta_z, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, float rmin2, float rmax2,
+	int pstart, double cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-delta_x[i]*cellsize;
+    ppos_y = posy[j]-delta_y[i]*cellsize;
+    ppos_z = posz[j]-delta_z[i]*cellsize;
+    double wj = w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x; 
+      dy = posy[k] - ppos_y; 
+      dz = posz[k] - ppos_z; 
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_float(double *m,
+        double *posx, double *posy, double *posz, double *w, int *ct,
+        int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
+        int *delta_x, int *delta_y, int *delta_z, int n, int nbin, int order,
+        int nmult, float rmin, float rmax, float rmin2, float rmax2,
+        int pstart, float cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)(posx[j]-delta_x[i]*cellsize);
+    ppos_y = (float)(posy[j]-delta_y[i]*cellsize);
+    ppos_z = (float)(posz[j]-delta_z[i]*cellsize);
+    float wj = (float)w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x;
+      dy = (float)posy[k] - ppos_y;
+      dz = (float)posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = (float)w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_float_shared(double *m,
+        double *posx, double *posy, double *posz, double *w, int *ct,
+        int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
+        int *delta_x, int *delta_y, int *delta_z, int n, int nbin, int order,
+        int nmult, float rmin, float rmax, float rmin2, float rmax2,
+        int pstart, float cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //pnum = primary particle idx (j) = length i
+    //spnum = secondary particle idx (k) = length i
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+
+    int samecell = sc[i];
+    int j = pnum[i];
+    int st = spnum[i];
+    int np = snp[i];
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)(posx[j]-delta_x[i]*cellsize);
+    ppos_y = (float)(posy[j]-delta_y[i]*cellsize);
+    ppos_z = (float)(posz[j]-delta_z[i]*cellsize);
+    float wj = (float)w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x;
+      dy = (float)posy[k] - ppos_y;
+      dz = (float)posz[k] - ppos_z;
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = (float)w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_fast(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid, int ncells,
+	int maxsep, int pstart, double cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+    
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-deltax*cellsize;
+    ppos_y = posy[j]-deltay*cellsize;
+    ppos_z = posz[j]-deltaz*cellsize;
+    double wj = w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x; 
+      dy = posy[k] - ppos_y; 
+      dz = posz[k] - ppos_z; 
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_fast_shared(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid, int ncells,
+	int maxsep, int pstart, double cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ double sx0i[NBIN];
+    __shared__ double sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+    
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    double dx, dy, dz, norm2;
+    double bin_factor = (double)nbin/(rmax-rmin);
+    double pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    double ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = posx[j]-deltax*cellsize;
+    ppos_y = posy[j]-deltay*cellsize;
+    ppos_z = posz[j]-deltaz*cellsize;
+    double wj = w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = posx[k] - ppos_x; 
+      dy = posy[k] - ppos_y; 
+      dz = posz[k] - ppos_z; 
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      double fi, fij, fijk;
+      int midx = 0;
+
+      double sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_fast_float(double *m,
+	double *posx, double *posy, double *posz, double *w, int *ct,
+	int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid, int ncells,
+	int maxsep, int pstart, double cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+    
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)posx[j]-deltax*cellsize;
+    ppos_y = (float)posy[j]-deltay*cellsize;
+    ppos_z = (float)posz[j]-deltaz*cellsize;
+    float wj = (float)w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x; 
+      dy = (float)posy[k] - ppos_y; 
+      dz = (float)posz[k] - ppos_z; 
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&x0i[bin], pair_w);
+      atomicAdd(&x2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+}
+
+__global__ void add_pairs_and_multipoles_periodic_kernel_fast_float_shared(
+	double *m, double *posx, double *posy, double *posz, double *w,
+	int *ct, int *start_list, int *np_list, int *cellnums, double *x0i,
+	double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, float rmin2, float rmax2, int3 nside_cuboid, int ncells,
+	int maxsep, int pstart, double cellsize) {
+    //m = np * nbin * nmult length
+    //ct = np * nbin length
+    //posx, posy, posz, ww = length np (every particle)
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+
+    __shared__ float sx0i[NBIN];
+    __shared__ float sx2i[NBIN];
+    if (threadIdx.x < nbin) {
+      sx0i[threadIdx.x] = 0;
+      sx2i[threadIdx.x] = 0;
+    }
+    __syncthreads();
+    
+    int cellrange = 2*maxsep+1;
+    int divisor = cellrange*cellrange*cellrange;
+    int j = i/divisor+pstart; //particle index
+    int delta = i % divisor; //0-342 if maxsep == 3
+
+    int3 prim_id = cell_id_from_1d(cellnums[j], nside_cuboid);
+    int deltaz = delta % cellrange - maxsep;
+    int deltay = (delta / cellrange) % cellrange - maxsep;
+    int deltax = delta / (cellrange*cellrange) - maxsep;
+
+    int3 cell_loc;
+
+    int bin;
+    float dx, dy, dz, norm2;
+    float bin_factor = (float)nbin/(rmax-rmin);
+    float pair_w;
+
+    int samecell = (deltax == 0 && deltay == 0 && deltaz == 0)?1:0;
+    cell_loc.x = prim_id.x + deltax;
+    cell_loc.y = prim_id.y + deltay;
+    cell_loc.z = prim_id.z + deltaz;
+
+    int tmp_test = test_cell_periodic(cell_loc, nside_cuboid, ncells);
+    if(tmp_test < 0 || tmp_test >= ncells) return;
+
+    int st = start_list[tmp_test];
+    int np = np_list[tmp_test];
+
+    //periodic calcs
+    float ppos_x, ppos_y, ppos_z; //primary particle pos
+    ppos_x = (float)posx[j]-deltax*cellsize;
+    ppos_y = (float)posy[j]-deltay*cellsize;
+    ppos_z = (float)posz[j]-deltaz*cellsize;
+    float wj = (float)w[j];
+
+    //take multiplication out of loop
+    int idx1 = (j-pstart)*nbin*nmult;
+    int idx2;
+    int cidx = (j-pstart)*nbin;
+
+    for (int k = st; k < st+np; k++) {
+      if (samecell && j == k) continue;
+
+      dx = (float)posx[k] - ppos_x; 
+      dy = (float)posy[k] - ppos_y; 
+      dz = (float)posz[k] - ppos_z; 
+      norm2 = (dx*dx + dy*dy + dz*dz);
+      if (norm2 >= rmax2 || norm2 <= rmin2) continue;
+
+      norm2 = sqrt(norm2);
+      //bin = floor((norm2-rmin)/(rmax-rmin)*nbin);
+      bin = floor((norm2-rmin)*bin_factor);
+      //take multiplication out of loop
+      idx2 = idx1+bin*nmult;
+      dx /= norm2;
+      dy /= norm2;
+      dz /= norm2;
+
+      // Accumulate the 2-pt correlation function
+      pair_w = w[k]*wj;
+      atomicAdd(&sx0i[bin], pair_w);
+      atomicAdd(&sx2i[bin], pair_w*(3.0*dz*dz-1)*0.5);
+
+      //Multipoles
+      atomicAdd(&ct[cidx+bin], 1);
+
+      float fi, fij, fijk;
+      int midx = 0;
+
+      float sum = 0;
+
+      fi = w[k];
+      for (int ii = 0; ii <= order; ii++) {
+        fij = fi;
+        for (int jj = 0; jj <= order-ii; jj++) {
+          fijk = fij;
+          for (int kk = 0; kk <= order-ii-jj; kk++) {
+            sum += fijk;
+            fijk *= dz;
+            //now incrementing to next index - copy sum to this index
+            //atomicAdd(&m[j*nbin*nmult+bin*nmult+midx], sum);
+            atomicAdd(&m[idx2+midx], sum);
+            sum = 0;
+            midx++;
+          }
+          fij *= dy;
+        }
+        fi *= dx;
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x < nbin) {
+      atomicAdd(&x0i[threadIdx.x], sx0i[threadIdx.x]);
+      atomicAdd(&x2i[threadIdx.x], sx2i[threadIdx.x]);
+    }
+    __syncthreads();
+}
+
+
+// ======================================================= /
+//  CPU METHODS                                            /
+// ======================================================= /
+
+
+// ======================================================= /
+//  ALL ADD_TO_POWER FUNCTIONS ARE HERE                    /
+// ======================================================= /
+
+//* ==== ADD TO POWER 3 METHODS ===== *//
+//3PCF kernels
+//Only 1 kernel option for 3CF, 3 precision modes
+
+void gpu_add_to_power3_orig(double *d_threepcf, double *d_weight3pcf,
+        double *weights, int *lut3_i, int *lut3_j, int *lut3_ct, 
+        int nb, int nlm, int nouter, int order, int np) {
+
+  //d_alm and d_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = nouter*np;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power3_kernel_orig<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_threepcf,
+        d_weight3pcf, weights, d_alm, d_almconj, lut3_i, lut3_j, lut3_ct,
+        nb, nlm, nouter, order, np, pstart3);
+
+  //increment pstart3 in case of data chunking
+  pstart3+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power3_orig_float(float *d_threepcf, float *d_weight3pcf,
+        double *weights, int *lut3_i, int *lut3_j, int *lut3_ct,
+        int nb, int nlm, int nouter, int order, int np) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = nouter*np;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power3_kernel_orig_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+	d_threepcf, d_weight3pcf, weights, f_alm, f_almconj, lut3_i, lut3_j,
+	lut3_ct, nb, nlm, nouter, order, np, pstart3);
+
+  //increment pstart3 in case of data chunking
+  pstart3+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power3_orig_mixed(double *d_threepcf, double *d_weight3pcf,
+        double *weights, int *lut3_i, int *lut3_j, int *lut3_ct,
+        int nb, int nlm, int nouter, int order, int np) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = nouter*np;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power3_kernel_orig_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+	d_threepcf, d_weight3pcf, weights, f_alm, f_almconj, lut3_i, lut3_j,
+	lut3_ct, nb, nlm, nouter, order, np, pstart3);
+
+  //increment pstart3 in case of data chunking
+  pstart3+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+
+//* ==== ADD TO POWER 4 METHODS ===== *//
+//4PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
+
+void gpu_add_to_power4(double *d_fourpcf, double *d_weight4pcf, 
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
+	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, double wp,
+	int nb, int nlm, int nouter, int ninner, int nell4) {
+
+  //d_alm and d_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart*nb*nlm;
+  pstart++;
+
+if (count == 0) {
+count++;
+std::cout << "Threads = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
+}
+
+  add_to_power4_kernel<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fourpcf,
+        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3,
+	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k, 
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//float version of main kernel
+void gpu_add_to_power4_float(float *d_fourpcf, float *d_weight4pcf, 
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
+        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart*nb*nlm;
+  pstart++;
+
+  add_to_power4_kernel_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fourpcf,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
+	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//mixed precision
+void gpu_add_to_power4_mixed(double *d_fourpcf, double *d_weight4pcf, 
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
+        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart*nb*nlm;
+  pstart++;
+
+  add_to_power4_kernel_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fourpcf,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
+	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//alternate (original) kernel
+void gpu_add_to_power4_orig(double *d_fourpcf, double *d_weight4pcf, 
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_m1,
+	int *lut4_m2, int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j,
+	int *lut4_k, double wp, int nb, int nlm, int nouter, int ninner,
+	int nell4) {
+
+  //d_alm and d_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart*nb*nlm;
+  pstart++;
+
+if (count == 0) {
+count++;
+std::cout << "Threads = " << threads << std::endl;
+}
+
+  add_to_power4_kernel_orig<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fourpcf,
+        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
+	lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//float version
+void gpu_add_to_power4_orig_float(float *d_fourpcf, float *d_weight4pcf, 
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
+        int *lut4_m1, int *lut4_m2,
+        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart*nb*nlm;
+  pstart++;
+
+  add_to_power4_kernel_orig_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fourpcf,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
+        lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//mixed precision
+void gpu_add_to_power4_orig_mixed(double *d_fourpcf, double *d_weight4pcf, 
+        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
+        int *lut4_m1, int *lut4_m2,
+        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart*nb*nlm;
+  pstart++;
+
+  add_to_power4_kernel_orig_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fourpcf,
+        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
+	lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//* ==== ADD TO POWER 5 METHODS ===== *//
+//5PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
+
+void gpu_add_to_power5(double *d_fivepcf, double *d_weight5pcf, 
+        int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n,
+        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
+	double wp, int nb, int nlm, int nouter, int ninner, int nell5) {
+
+  //d_alm and d_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart5*nb*nlm;
+  pstart5++;
+
+if (count == 1) {
+count++;
+std::cout << "Threads = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
+}
+
+  add_to_power5_kernel<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
+        d_weight5pcf, d_alm, d_almconj, lut5_l1, lut5_l2,
+        lut5_l12, lut5_l3, lut5_l4, lut5_odd,
+        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power5_float(float *d_fivepcf, float *d_weight5pcf, 
+        int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n,
+        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart5*nb*nlm;
+  pstart5++;
+
+  add_to_power5_kernel_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
+	d_weight5pcf, f_alm, f_almconj, lut5_l1, lut5_l2, lut5_l12,
+	lut5_l3, lut5_l4, lut5_odd, lut5_n, lut5_zeta, lut5_i,
+	lut5_j, lut5_k, lut5_l, wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power5_mixed(double *d_fivepcf, double *d_weight5pcf, 
+        int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
+        int *lut5_l4, bool *lut5_odd, int *lut5_n,
+        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart5*nb*nlm;
+  pstart5++;
+
+  add_to_power5_kernel_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
+	d_weight5pcf, f_alm, f_almconj, lut5_l1, lut5_l2, lut5_l12,
+	lut5_l3, lut5_l4, lut5_odd, lut5_n, lut5_zeta, lut5_i, lut5_j,
+	lut5_k, lut5_l, wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power5_orig(double *d_fivepcf, double *d_weight5pcf, 
+        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
+	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
+        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
+	double wp, int nb, int nlm, int nouter, int ninner, int nell5) {
+
+  //d_alm and d_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart5*nb*nlm;
+  pstart5++;
+
+if (count == 1) {
+count++;
+std::cout << "Threads = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
+}
+
+  add_to_power5_kernel_orig<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
+        d_weight5pcf, d_alm, d_almconj, lut5_l1,lut5_l2,
+        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
+        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power5_orig_float(float *d_fivepcf, float *d_weight5pcf, 
+        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
+	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
+        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart5*nb*nlm;
+  pstart5++;
+
+  add_to_power5_kernel_orig_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
+        d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
+
+        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
+        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf, 
+        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
+	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
+        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
+
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart5*nb*nlm;
+  pstart5++;
+
+  add_to_power5_kernel_orig_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
+        d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
+        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
+        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+// ======================================================= /
+//  ALL MEMORY FUNCTIONS ARE HERE                          /
+// ======================================================= /
+//allocate LUTs used in all kernels
+//3PCF LUTs
+
+
+void gpu_allocate_luts3(int **p_lut3_i, int **p_lut3_j, int **p_lut3_ct, int nouter) {
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&(*p_lut3_i), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut3_j), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut3_ct), nouter*sizeof(int));
+}
+
+void gpu_allocate_threepcf(double **p_threepcf, double *threepcf, int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_threepcf), size*sizeof(double));
+  double *d_threepcf = *(p_threepcf);
+  for (int i = 0; i < size; i++) d_threepcf[i] = threepcf[i];
+}
+
+void gpu_allocate_weight3pcf(double **p_weight3pcf, double *weight3pcf, int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_weight3pcf), size*sizeof(double));
+  double *d_weight3pcf = *(p_weight3pcf);
+  for (int i = 0; i < size; i++) d_weight3pcf[i] = weight3pcf[i];
+}
+
+void copy_threepcf(double **p_threepcf, double *threepcf, int size) {
+  double *d_threepcf = *(p_threepcf);
+  for (int i = 0; i < size; i++) threepcf[i] = d_threepcf[i];
+}
+
+void gpu_allocate_threepcf(float **p_threepcf, double *threepcf, int size) {
+  cudaMallocManaged(&(*p_threepcf), size*sizeof(float));
+  float *f_threepcf = *(p_threepcf);
+  for (int i = 0; i < size; i++) f_threepcf[i] = (float)threepcf[i];
+}
+
+void gpu_allocate_weight3pcf(float **p_weight3pcf, double *weight3pcf, int size) {
+  cudaMallocManaged(&(*p_weight3pcf), size*sizeof(float));
+  float *f_weight3pcf = *(p_weight3pcf);
+  for (int i = 0; i < size; i++) f_weight3pcf[i] = (float)weight3pcf[i];
+}
+
+void copy_threepcf(float **p_threepcf, double *threepcf, int size) {
+  float *f_threepcf = *(p_threepcf);
+  for (int i = 0; i < size; i++) threepcf[i] = (double)f_threepcf[i];
+}
+
+//* ==== FREE MEMORY 3 ==== *//
+
+void gpu_free_luts3(int *lut3_i, int *lut3_j, int *lut3_ct) {
+  cudaFree(lut3_i);
+  cudaFree(lut3_j);
+  cudaFree(lut3_ct);
+}
+
+void gpu_free_memory3(double *threepcf, double *weight3pcf) {
+  cudaFree(threepcf);
+  cudaFree(weight3pcf);
+}
+
+void gpu_free_memory3(float *threepcf, float *weight3pcf) {
+  cudaFree(threepcf);
+  cudaFree(weight3pcf);
+}
+
+// ======================================================= /
+//4PCF LUTs
 
 void gpu_allocate_luts4(int **p_lut4_l1, int **p_lut4_l2, int **p_lut4_l3,
 	bool **p_lut4_odd, int **p_lut4_n,
@@ -1519,7 +4674,8 @@ void gpu_free_memory_m4(int *lut4_m1, int *lut4_m2) {
   cudaFree(lut4_m2);
 }
 
-//* ==== Allocate LUTs 5 ==== *//
+// ======================================================= /
+//5PCF LUTs
 
 void gpu_allocate_luts(int **p_lut5_l1, int **p_lut5_l2, int **p_lut5_l12,
 	int **p_lut5_l3, int **p_lut5_l4, bool **p_lut5_odd, int **p_lut5_n,
@@ -1566,20 +4722,6 @@ void gpu_allocate_weight5pcf(double **p_weight5pcf, double *weight5pcf, int size
   cudaMallocManaged(&(*p_weight5pcf), size*sizeof(double));
   double *d_weight5pcf = *(p_weight5pcf);
   for (int i = 0; i < size; i++) d_weight5pcf[i] = weight5pcf[i];
-}
-
-//* ==== ALLOCATE ALMS ==== *//
-
-void gpu_allocate_alms(int np, int nb, int nlm, bool isDouble) {
-  //d_alm and d_almconj are already declared at top of gpufuncs.cu
-  //so are f_alm and f_almconj.  Need to select based on kernel.
-  if (isDouble) {
-    cudaMallocManaged(&d_alm, np*nb*nlm*sizeof(thrust::complex<double>));
-    cudaMallocManaged(&d_almconj, np*nb*nlm*sizeof(thrust::complex<double>));
-  } else {
-    cudaMallocManaged(&f_alm, np*nb*nlm*sizeof(thrust::complex<float>));
-    cudaMallocManaged(&f_almconj, np*nb*nlm*sizeof(thrust::complex<float>));
-  }
 }
 
 void copy_fivepcf(double **p_fivepcf, double *fivepcf, int size) {
@@ -1638,6 +4780,84 @@ void gpu_free_memory_m(int *lut5_m1, int *lut5_m2, int *lut5_m3) {
   cudaFree(lut5_m3);
 }
 
+// ======================================================= /
+//  ALL ALM FUNCTIONS ARE HERE                             /
+// ======================================================= /
+
+//* ==== ALLOCATE ALMS ==== *//
+
+void gpu_allocate_alms(int np, int nb, int nlm, bool isDouble) {
+  //d_alm and d_almconj are already declared at top of gpufuncs.cu
+  //so are f_alm and f_almconj.  Need to select based on kernel.
+  if (isDouble) {
+    cudaMallocManaged(&d_alm, np*nb*nlm*sizeof(thrust::complex<double>));
+    cudaMallocManaged(&d_almconj, np*nb*nlm*sizeof(thrust::complex<double>));
+  } else {
+    cudaMallocManaged(&f_alm, np*nb*nlm*sizeof(thrust::complex<float>));
+    cudaMallocManaged(&f_almconj, np*nb*nlm*sizeof(thrust::complex<float>));
+  }
+}
+
+void gpu_compute_alms(int *map, double *m, int nbin, int nlm, int maxp,
+	int order, int mapdim, int nmult) {
+
+  pstart5 = 0; //reset pstart5 each time alms are calculated
+  pstart = 0; //ALSO pstart (4)
+
+  int *d_map;
+  size_t size_map = sizeof(int)*mapdim*mapdim*mapdim;
+  cudaMallocManaged(&d_map, size_map);
+  int n = 0;
+  //copy map to GPU memory
+  for (int a = 0; a < mapdim; a++) {
+    for (int b = 0; b < mapdim; b++) {
+      for (int c = 0; c < mapdim; c++) {
+	d_map[n] = map[n];
+	n++;
+      }
+    }
+  }
+
+  // Invoke kernel
+  long threads = maxp*nbin;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  compute_alms<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_alm, d_almconj, d_map, m,
+	nbin, nlm, maxp, order, mapdim, nmult);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+}
+
+void gpu_compute_alms_float(int *map, double *m, int nbin, int nlm, int maxp,
+	int order, int mapdim, int nmult) {
+
+  pstart5 = 0; //reset pstart5 each time alms are calculated
+
+  int *d_map;
+  size_t size_map = sizeof(int)*mapdim*mapdim*mapdim;
+  cudaMallocManaged(&d_map, size_map);
+  int n = 0;
+  //copy map to GPU memory
+  for (int a = 0; a < mapdim; a++) {
+    for (int b = 0; b < mapdim; b++) {
+      for (int c = 0; c < mapdim; c++) {
+        d_map[n] = map[n];
+        n++;
+      }
+    }
+  }
+
+  // Invoke kernel
+  long threads = maxp*nbin;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  compute_alms_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(f_alm, f_almconj,
+	d_map, m, nbin, nlm, maxp, order, mapdim, nmult);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+}
 
 //* ==== FREE ALMS ==== *//
 
@@ -1652,7 +4872,11 @@ void gpu_free_memory_alms(bool isDouble) {
   }
 }
 
-//* ==== ALLOCATE MULTIPOLES AND PARTICLES ==== *//
+// ======================================================= /
+//  PAIRS AND MULTIPOLES ACCUMULATION                      /
+// ======================================================= /
+
+//memory operation
 
 void gpu_allocate_multipoles(double **p_msave, int **p_csave,
         int **p_pnum, int **p_spnum, int **p_snp, int **p_sc,
@@ -1664,6 +4888,17 @@ void gpu_allocate_multipoles(double **p_msave, int **p_csave,
   cudaMallocManaged(&(*p_spnum), nmax*sizeof(int));
   cudaMallocManaged(&(*p_snp), nmax*sizeof(int));
   cudaMallocManaged(&(*p_sc), nmax*sizeof(int));
+}
+
+void gpu_allocate_multipoles_fast(double **p_msave, int **p_csave,
+        int **p_start_list, int **p_np_list, int **p_cellnums,
+        int nmult, int nbin, int np, int nmax, int nc) {
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&(*p_msave), nmult*nbin*np*sizeof(double));
+  cudaMallocManaged(&(*p_csave), np*nbin*sizeof(int));
+  cudaMallocManaged(&(*p_start_list), nc*sizeof(int));
+  cudaMallocManaged(&(*p_np_list), nc*sizeof(int));
+  cudaMallocManaged(&(*p_cellnums), np*sizeof(int));
 }
 
 void gpu_allocate_particle_arrays(double **p_posx, double **p_posy, double **p_posz, double **p_weights, int np) {
@@ -1714,365 +4949,273 @@ void free_gpu_periodic_arrays(int *delta_x, int *delta_y, int *delta_z) {
   cudaFree(delta_z);
 }
 
-//* ==== ADD TO POWER 4 METHODS ===== *//
+// ======================================================= /
 
-void gpu_add_to_power4(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_n,
-	int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k, double wp,
-	int nb, int nlm, int nouter, int ninner, int nell4) {
+// We have 4 methods for each of pairs_only and pairs_and_multipoles
+// DEFAULTS in CAPS
+// NORMAL mode or periodic
+// original kernel or FAST
 
-  //d_alm and d_almconj already allocated and computed
+// Additionally each method takes 2 bools which cascade to 4x kernels
+// SHARED (default TRUE) = SHARED vs global memory
+// gpufloat (default FALSE) = DOUBLE vs float
 
+// Thus we have 16 kernels for each bound up in 4 methods.
+
+//PAIRS ONLY
+
+void gpu_add_pairs_only(double *posx, double *posy, double *posz, double *w,
+	int *pnum, int *spnum, int *snp, int *sc, double *x0i, double *x2i,
+	int n, int nbin, float rmin, float rmax, bool shared, bool gpufloat) {
   // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  long threads = n;
+  float rmin2 = rmin*rmin;
+  float rmax2 = rmax*rmax;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  //calculate index of d_alm for this particle
-  int almidx = pstart*nb*nlm;
-  pstart++;
-
-if (count == 0) {
-count++;
-std::cout << "Threads = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
-}
-
-  add_to_power4_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3,
-	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k, 
-        wp, nlm, nouter, ninner, almidx);
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_only_kernel_float_shared<<<blocksPerGrid, THREADS_PER_BLOCK>>>
+	(posx, posy, posz, w, pnum, spnum, snp, sc, x0i, x2i, n, nbin,
+	rmin, rmax, rmin2, rmax2);
+    } else {
+      add_pairs_only_kernel_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(posx,
+	posy, posz, w, pnum, spnum, snp, sc, x0i, x2i, n, nbin, rmin, rmax,
+	rmin2, rmax2);
+    }
+  } else {
+    if (shared) {
+      add_pairs_only_kernel_shared<<<blocksPerGrid, THREADS_PER_BLOCK>>>(posx,
+	posy, posz, w, pnum, spnum, snp, sc, x0i, x2i, n, nbin, rmin, rmax,
+	rmin2, rmax2);
+    } else {
+      add_pairs_only_kernel<<<blocksPerGrid, THREADS_PER_BLOCK>>>(posx,
+	posy, posz, w, pnum, spnum, snp, sc, x0i, x2i, n, nbin, rmin, rmax,
+	rmin2, rmax2);
+    }
+  }
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
-//float version of main kernel
-void gpu_add_to_power4_float(float *d_fourpcf, float *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
-        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
-
-  //f_alm and f_almconj already allocated and computed
-
+void gpu_add_pairs_only_periodic(double *posx, double *posy, double *posz,
+	double *w, int *pnum, int *spnum, int *snp, int *sc, double *x0i,
+	double *x2i, int *delta_x, int *delta_y, int *delta_z, int n,
+	int nbin, float rmin, float rmax, double cellsize, bool shared,
+	bool gpufloat) {
   // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  long threads = n;
+  float rmin2 = rmin*rmin;
+  float rmax2 = rmax*rmax;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  //calculate index of d_alm for this particle
-  int almidx = pstart*nb*nlm;
-  pstart++;
-
-  add_to_power4_kernel_float<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
-	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-        wp, nlm, nouter, ninner, almidx);
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_only_periodic_kernel_float_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, pnum, spnum, snp, sc,
+	x0i, x2i, delta_x, delta_y, delta_z, n, nbin, rmin, rmax, rmin2,
+	rmax2, (float)cellsize);
+    } else {
+      add_pairs_only_periodic_kernel_float<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, pnum, spnum, snp, sc,
+	x0i, x2i, delta_x, delta_y, delta_z, n, nbin, rmin, rmax, rmin2,
+	rmax2, (float)cellsize);
+    }
+  } else {
+    if (shared) {
+      add_pairs_only_periodic_kernel_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, pnum, spnum, snp, sc,
+	x0i, x2i, delta_x, delta_y, delta_z, n, nbin, rmin, rmax, rmin2,
+	rmax2, cellsize);
+    } else {
+      add_pairs_only_periodic_kernel<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, pnum, spnum, snp, sc,
+	x0i, x2i, delta_x, delta_y, delta_z, n, nbin, rmin, rmax, rmin2,
+	rmax2, cellsize);
+    }
+  }
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
-//mixed precision
-void gpu_add_to_power4_mixed(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
-        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
-
-  //f_alm and f_almconj already allocated and computed
+void gpu_add_pairs_only_fast(double *posx, double *posy, double *posz,
+	double *w, int *start_list, int *np_list, int *cellnums, double *x0i,
+        double *x2i, int n, int nbin, int order,
+        int nmult, float rmin, float rmax, int nside_cuboid_x,
+        int nside_cubiod_y, int nside_cuboid_z, int ncells, int maxsep,
+        int pstart, bool shared, bool gpufloat) {
 
   // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  long threads = n;
+  float rmin2 = rmin*rmin;
+  float rmax2 = rmax*rmax;
+  int3 nside_cuboid = make_int3(nside_cuboid_x, nside_cubiod_y, nside_cuboid_z);
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  //calculate index of d_alm for this particle
-  int almidx = pstart*nb*nlm;
-  pstart++;
-
-  add_to_power4_kernel_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3,
-	lut4_odd, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-        wp, nlm, nouter, ninner, almidx);
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_only_kernel_fast_float_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+	cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    } else {
+      add_pairs_only_kernel_fast_float<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+	cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    }
+  } else {
+    if (shared) {
+      add_pairs_only_kernel_fast_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+	cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    } else {
+      add_pairs_only_kernel_fast<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+	cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    }
+  }
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
-//alternate (original) kernel
-void gpu_add_to_power4_orig(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd, int *lut4_m1,
-	int *lut4_m2, int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j,
-	int *lut4_k, double wp, int nb, int nlm, int nouter, int ninner,
-	int nell4) {
-
-  //d_alm and d_almconj already allocated and computed
+void gpu_add_pairs_only_periodic_fast(double *posx, double *posy, double *posz,
+        double *w, int *start_list, int *np_list, int *cellnums, double *x0i,
+        double *x2i, int n, int nbin, int order, int nmult, float rmin,
+	float rmax, int nside_cuboid_x, int nside_cubiod_y,
+	int nside_cuboid_z, int ncells, int maxsep, int pstart,
+	double cellsize, bool shared, bool gpufloat) { 
 
   // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  long threads = n;
+  float rmin2 = rmin*rmin;
+  float rmax2 = rmax*rmax;
+  int3 nside_cuboid = make_int3(nside_cuboid_x, nside_cubiod_y, nside_cuboid_z);
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  //calculate index of d_alm for this particle
-  int almidx = pstart*nb*nlm;
-  pstart++;
-
-if (count == 0) {
-count++;
-std::cout << "Threads = " << threads << std::endl;
-}
-
-  add_to_power4_kernel_orig<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, d_alm, d_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
-	lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-        wp, nlm, nouter, ninner, almidx);
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_only_periodic_kernel_fast_float_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+	cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart, (float)cellsize);
+    } else {
+      add_pairs_only_periodic_kernel_fast_float<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+        cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart, (float)cellsize);
+    }
+  } else {
+    if (shared) {
+      add_pairs_only_periodic_kernel_fast_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+        cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart, cellsize);
+    } else {
+      add_pairs_only_periodic_kernel_fast<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(posx, posy, posz, w, start_list, np_list,
+        cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart, cellsize);
+    }
+  }
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
-//float version
-void gpu_add_to_power4_orig_float(float *d_fourpcf, float *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
-        int *lut4_m1, int *lut4_m2,
-        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
 
-  //f_alm and f_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart*nb*nlm;
-  pstart++;
-
-  add_to_power4_kernel_orig_float<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
-        lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-        wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-//mixed precision
-void gpu_add_to_power4_orig_mixed(double *d_fourpcf, double *d_weight4pcf, 
-        int *lut4_l1, int *lut4_l2, int *lut4_l3, bool *lut4_odd,
-        int *lut4_m1, int *lut4_m2,
-        int *lut4_n, int *lut4_zeta, int *lut4_i, int *lut4_j, int *lut4_k,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell4) {
-
-  //f_alm and f_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart*nb*nlm;
-  pstart++;
-
-  add_to_power4_kernel_orig_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fourpcf,
-        d_weight4pcf, f_alm, f_almconj, lut4_l1, lut4_l2, lut4_l3, lut4_odd,
-	lut4_m1, lut4_m2, lut4_n, lut4_zeta, lut4_i, lut4_j, lut4_k,
-        wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-//* ==== ADD TO POWER 5 METHODS ===== *//
-
-void gpu_add_to_power5(double *d_fivepcf, double *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, bool *lut5_odd, int *lut5_n,
-        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
-	double wp, int nb, int nlm, int nouter, int ninner, int nell5) {
-
-  //d_alm and d_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart5*nb*nlm;
-  pstart5++;
-
-  add_to_power5_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
-        d_weight5pcf, d_alm, d_almconj, lut5_l1, lut5_l2,
-        lut5_l12, lut5_l3, lut5_l4, lut5_odd,
-        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-void gpu_add_to_power5_float(float *d_fivepcf, float *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, bool *lut5_odd, int *lut5_n,
-        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
-
-  //f_alm and f_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart5*nb*nlm;
-  pstart5++;
-
-  add_to_power5_kernel_float<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
-	d_weight5pcf, f_alm, f_almconj, lut5_l1, lut5_l2, lut5_l12,
-	lut5_l3, lut5_l4, lut5_odd, lut5_n, lut5_zeta, lut5_i,
-	lut5_j, lut5_k, lut5_l, wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-void gpu_add_to_power5_mixed(double *d_fivepcf, double *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
-        int *lut5_l4, bool *lut5_odd, int *lut5_n,
-        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
-
-  //f_alm and f_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart5*nb*nlm;
-  pstart5++;
-
-  add_to_power5_kernel_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
-	d_weight5pcf, f_alm, f_almconj, lut5_l1, lut5_l2, lut5_l12,
-	lut5_l3, lut5_l4, lut5_odd, lut5_n, lut5_zeta, lut5_i, lut5_j,
-	lut5_k, lut5_l, wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-void gpu_add_to_power5_orig(double *d_fivepcf, double *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
-	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
-        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
-	double wp, int nb, int nlm, int nouter, int ninner, int nell5) {
-
-  //d_alm and d_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart5*nb*nlm;
-  pstart5++;
-
-  add_to_power5_kernel_orig<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
-        d_weight5pcf, d_alm, d_almconj, lut5_l1,lut5_l2,
-        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
-        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-void gpu_add_to_power5_orig_float(float *d_fivepcf, float *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
-	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
-        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
-
-  //f_alm and f_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart5*nb*nlm;
-  pstart5++;
-
-  add_to_power5_kernel_orig_float<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
-        d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
-
-        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
-        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
-
-void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf, 
-        int *lut5_l1, int *lut5_l2, int *lut5_l3, int *lut5_l4,
-	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
-        int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
-        float wp, int nb, int nlm, int nouter, int ninner, int nell5) {
-
-  //f_alm and f_almconj already allocated and computed
-
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = ninner*nouter;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  //calculate index of d_alm for this particle
-  int almidx = pstart5*nb*nlm;
-  pstart5++;
-
-  add_to_power5_kernel_orig_mixed<<<blocksPerGrid, threadsPerBlock>>>(d_fivepcf,
-        d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
-        lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
-        lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
-        wp, nlm, nouter, ninner, almidx);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
-}
+//PAIRS AND MULTIPOLES
 
 void gpu_add_pairs_and_multipoles(double *m, double *posx, double *posy,
         double *posz, double *w, int *ct, int *pnum, int *spnum,
 	int *snp, int *sc, double *x0i, double *x2i, int n, int nbin,
-	int order, int nmult, float rmin, float rmax, int pstart5) {
+	int order, int nmult, float rmin, float rmax, int pstart,
+	bool shared, bool gpufloat) {
   // Invoke kernel
-  int threadsPerBlock = 512;
   long threads = n;
   float rmin2 = rmin*rmin;
   float rmax2 = rmax*rmax;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  add_pairs_and_multipoles_kernel<<<blocksPerGrid, threadsPerBlock>>>(m,
-        posx, posy, posz, w, ct, pnum, spnum, snp, sc, x0i, x2i,
-        n, nbin, order, nmult, rmin, rmax, rmin2, rmax2, pstart5);
+  std::clog << " NTHREADS " << threads << " NBIN " << nbin << std::endl;
+  std::clog << "N " << n << " BLOCKS " << blocksPerGrid << std::endl;
+
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_and_multipoles_kernel_float_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum,
+	snp, sc, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2,
+	rmax2, pstart);
+    } else {
+      add_pairs_and_multipoles_kernel_float<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum,
+        snp, sc, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2,
+        rmax2, pstart);
+    }
+  } else {
+    if (shared) {
+      add_pairs_and_multipoles_kernel_shared<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum,
+        snp, sc, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2,
+        rmax2, pstart); 
+    } else {
+      add_pairs_and_multipoles_kernel<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum,
+        snp, sc, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2,
+        rmax2, pstart);
+    }
+  }
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+}
+
+void gpu_add_pairs_and_multipoles_fast(double *m, double *posx, double *posy,
+        double *posz, double *w, int *ct, int *start_list, int *np_list,
+	int *cellnums, double *x0i, double *x2i, int n, int nbin, int order,
+	int nmult, float rmin, float rmax, int nside_cuboid_x,
+	int nside_cubiod_y, int nside_cuboid_z, int ncells, int maxsep,
+	int pstart, bool shared, bool gpufloat) {
+
+  // Invoke kernel
+  long threads = n;
+  float rmin2 = rmin*rmin;
+  float rmax2 = rmax*rmax;
+  int3 nside_cuboid = make_int3(nside_cuboid_x, nside_cubiod_y, nside_cuboid_z);
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+  std::clog << " NTHREADS " << threads << " NBIN " << nbin << std::endl;
+  std::clog << "N " << n << " BLOCKS " << blocksPerGrid << std::endl;
+
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_and_multipoles_kernel_fast_float_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, start_list, np_list,
+	cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    } else {
+      add_pairs_and_multipoles_kernel_fast_float<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, start_list, np_list,
+        cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    }
+  } else {
+    if (shared) {
+      add_pairs_and_multipoles_kernel_fast_shared<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, start_list, np_list,
+        cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    } else {
+      add_pairs_and_multipoles_kernel_fast<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, start_list, np_list,
+        cellnums, x0i, x2i, n, nbin, order, nmult, rmin, rmax, rmin2, rmax2,
+        nside_cuboid, ncells, maxsep, pstart);
+    }
+  }
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
@@ -2082,89 +5225,101 @@ void gpu_add_pairs_and_multipoles_periodic(double *m, double *posx,
         double *posy, double *posz, double *w, int *ct, int *pnum, int *spnum,
         int *snp, int *sc, double *x0i, double *x2i, int *delta_x,
         int *delta_y, int *delta_z, int n, int nbin, int order, int nmult,
-        float rmin, float rmax, int pstart5, double cellsize) {
+        float rmin, float rmax, int pstart, double cellsize,
+	bool shared, bool gpufloat) {
   // Invoke kernel
-  int threadsPerBlock = 512;
   long threads = n;
   float rmin2 = rmin*rmin;
   float rmax2 = rmax*rmax;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  add_pairs_and_multipoles_periodic_kernel<<<blocksPerGrid,
-	threadsPerBlock>>>(m,
-        posx, posy, posz, w, ct, pnum, spnum, snp, sc, x0i, x2i,
-        delta_x, delta_y, delta_z, n, nbin, order, nmult, rmin, rmax, rmin2,
-	rmax2, pstart5, cellsize);
-
-  // Wait for GPU to finish before accessing on host
-  //cudaDeviceSynchronize();
-}
-
-void gpu_compute_alms(int *map, double *m, int nbin, int nlm, int maxp,
-	int order, int mapdim, int nmult) {
-
-  pstart5 = 0; //reset pstart5 each time alms are calculated
-
-  int *d_map;
-  size_t size_map = sizeof(int)*mapdim*mapdim*mapdim;
-  cudaMallocManaged(&d_map, size_map);
-  int n = 0;
-  //copy map to GPU memory
-  for (int a = 0; a < mapdim; a++) {
-    for (int b = 0; b < mapdim; b++) {
-      for (int c = 0; c < mapdim; c++) {
-	d_map[n] = map[n];
-	n++;
-      }
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_and_multipoles_periodic_kernel_float_shared<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum, snp,
+	sc, x0i, x2i, delta_x, delta_y, delta_z, n, nbin, order, nmult,
+	rmin, rmax, rmin2, rmax2, pstart, (float)cellsize);
+    } else {
+      add_pairs_and_multipoles_periodic_kernel_float<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum, snp,
+	sc, x0i, x2i, delta_x, delta_y, delta_z, n, nbin, order, nmult,
+	rmin, rmax, rmin2, rmax2, pstart, (float)cellsize);
+    }
+  } else {
+    if (shared) {
+      add_pairs_and_multipoles_periodic_kernel_shared<<<blocksPerGrid,
+	THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum, snp,
+	sc, x0i, x2i, delta_x, delta_y, delta_z, n, nbin, order, nmult,
+	rmin, rmax, rmin2, rmax2, pstart, cellsize);
+    } else {
+      add_pairs_and_multipoles_periodic_kernel<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct, pnum, spnum, snp,
+	sc, x0i, x2i, delta_x, delta_y, delta_z, n, nbin, order, nmult,
+	rmin, rmax, rmin2, rmax2, pstart, cellsize);
     }
   }
 
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = maxp*nbin;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  compute_alms<<<blocksPerGrid, threadsPerBlock>>>(d_alm, d_almconj, d_map, m,
-	nbin, nlm, maxp, order, mapdim, nmult);
-
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
 }
 
-void gpu_compute_alms_float(int *map, double *m, int nbin, int nlm, int maxp,
-	int order, int mapdim, int nmult) {
+void gpu_add_pairs_and_multipoles_periodic_fast(double *m, double *posx,
+        double *posy, double *posz, double *w, int *ct, int *start_list,
+        int *np_list, int *cellnums, double *x0i, double *x2i, int n,
+	int nbin, int order, int nmult, float rmin, float rmax,
+	int nside_cuboid_x, int nside_cubiod_y, int nside_cuboid_z,
+	int ncells, int maxsep, int pstart, double cellsize,
+	bool shared, bool gpufloat) {
+  // Invoke kernel
+  long threads = n;
+  float rmin2 = rmin*rmin;
+  float rmax2 = rmax*rmax;
+  int3 nside_cuboid = make_int3(nside_cuboid_x, nside_cubiod_y, nside_cuboid_z);
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
 
-  pstart5 = 0; //reset pstart5 each time alms are calculated
-
-  int *d_map;
-  size_t size_map = sizeof(int)*mapdim*mapdim*mapdim;
-  cudaMallocManaged(&d_map, size_map);
-  int n = 0;
-  //copy map to GPU memory
-  for (int a = 0; a < mapdim; a++) {
-    for (int b = 0; b < mapdim; b++) {
-      for (int c = 0; c < mapdim; c++) {
-        d_map[n] = map[n];
-        n++;
-      }
+  if (gpufloat) {
+    if (shared) {
+      add_pairs_and_multipoles_periodic_kernel_fast_float_shared<<<
+	blocksPerGrid, THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct,
+	start_list, np_list, cellnums, x0i, x2i, n, nbin, order, nmult,
+	rmin, rmax, rmin2, rmax2, nside_cuboid, ncells, maxsep, pstart,
+	(float)cellsize);
+    } else {
+      add_pairs_and_multipoles_periodic_kernel_fast_float<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct,
+        start_list, np_list, cellnums, x0i, x2i, n, nbin, order, nmult,
+        rmin, rmax, rmin2, rmax2, nside_cuboid, ncells, maxsep, pstart,
+        (float)cellsize);
+    }
+  } else {
+    if (shared) {
+      add_pairs_and_multipoles_periodic_kernel_fast_shared<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct,
+        start_list, np_list, cellnums, x0i, x2i, n, nbin, order, nmult,
+        rmin, rmax, rmin2, rmax2, nside_cuboid, ncells, maxsep, pstart,
+        cellsize);
+    } else {
+      add_pairs_and_multipoles_periodic_kernel_fast<<<blocksPerGrid,
+        THREADS_PER_BLOCK>>>(m, posx, posy, posz, w, ct,
+        start_list, np_list, cellnums, x0i, x2i, n, nbin, order, nmult,
+        rmin, rmax, rmin2, rmax2, nside_cuboid, ncells, maxsep, pstart,
+        cellsize);
     }
   }
 
-  // Invoke kernel
-  int threadsPerBlock = 512;
-  long threads = maxp*nbin;
-  int blocksPerGrid = (threads+threadsPerBlock-1) / threadsPerBlock;
-
-  compute_alms_float<<<blocksPerGrid, threadsPerBlock>>>(f_alm, f_almconj,
-	d_map, m, nbin, nlm, maxp, order, mapdim, nmult);
-
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
 }
+
 
 void gpu_device_synchronize() {
   // Wait for GPU to finish before accessing on host
   //This does not need to be called after every kernel invocation,
   //but just before memory is accessed on host
   cudaDeviceSynchronize();
+}
+
+void gpu_print_cuda_error() {
+cudaError_t err = cudaGetLastError();
+printf("CUDA Error: %s\n", cudaGetErrorString(err));
 }

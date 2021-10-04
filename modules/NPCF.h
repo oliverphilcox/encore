@@ -12,8 +12,17 @@ class NPCF {
 // This should accumulate the NPCF contributions, for all combination of bins.
   public:
 #ifdef GPU
+    bool generate_luts3 = true;
     bool generate_luts4 = true;
     bool generate_luts = true;
+    //3PCF LUTs and arrays
+    //declare LUTs as pointers -- we'll want to allocate and populate once
+    int *lut3_i, *lut3_j, *lut3_ct;
+    double *d_weight3pcf, *d_threepcf;
+    //declare pointers for float operations - only used if -float but
+    //simply declaring them doesn't cost much 
+    float *f_weight3pcf, *f_threepcf;
+
     //declare LUTs as pointers -- we'll want to allocate and populate once
     int *lut4_l1, *lut4_l2, *lut4_l3;
     bool *lut4_odd;
@@ -23,6 +32,7 @@ class NPCF {
     //declare pointers for float operations - only used if -float but
     //simply declaring them doesn't cost much 
     float *f_weight4pcf, *f_fourpcf;
+
     int *lut5_l1, *lut5_l2, *lut5_l12, *lut5_l3, *lut5_l4;
     bool *lut5_odd;
     int *lut5_m1, *lut5_m2, *lut5_m3;
@@ -44,6 +54,7 @@ class NPCF {
     #define NL (ORDER+1)
     #define N3PCF (NBIN*(NBIN-1)/2) // only compute bin1 < bin2
     Float threepcf[N3PCF*NL];
+    int nouter3;
 
 #ifdef FOURPCF
     STimer BinTimer4;
@@ -703,16 +714,62 @@ class NPCF {
 
      }
 
-  inline void add_to_power(Multipoles *mult, Float wp) {
-      // wp is the primary galaxy weight
-	// Now use all of the binned multipoles to compute the
-	// spherical harmonics in all bins and then the cross-powers.
-	// Need some scratch space:
-	// This also applies the weight of the primary galaxy.
-        MultTimer.Start();
-	Complex alm[NBIN][NLM];   // Apparently this initializes to zero
+#ifdef GPU
+  inline void add_to_power3_gpu(double *weights, int np) {
+    //We need a separate method to call for 3PCF on the GPU
+    //since the kernel will be called once per data chunk (usually once
+    //total) instead of per particle.  Since alm and almconj are computed
+    //on GPU as well, this is easy to separate out.
 
-        //if (_gpumode == 0) {
+    if (_gpumode == 0) return;
+    if (generate_luts3) {
+      //can only get here in _gpumode > 0
+      generate_luts3 = false;
+      nouter3 = N3PCF;
+      if (_gpufloat) {
+        gpu_allocate_weight3pcf(&f_weight3pcf, weight3pcf, NLM);
+        gpu_allocate_threepcf(&f_threepcf, threepcf, NL*N3PCF);
+      } else {
+        gpu_allocate_weight3pcf(&d_weight3pcf, weight3pcf, NLM);
+        gpu_allocate_threepcf(&d_threepcf, threepcf, NL*N3PCF);
+      }
+      gpu_allocate_luts3(&lut3_i, &lut3_j, &lut3_ct, nouter3);
+      for (int i=0, ct=0; i<NBIN; i++) {
+        for (int j=i+1; j<NBIN; j++, ct++) {
+          lut3_i[ct] = i;
+          lut3_j[ct] = j;
+          lut3_ct[ct] = ct;
+        }
+      }
+    }
+
+    if (_gpufloat) {
+      gpu_add_to_power3_orig_float(f_threepcf, f_weight3pcf,
+        weights, lut3_i, lut3_j, lut3_ct,
+        NBIN, NLM, nouter3, ORDER, np);
+    } else if (_gpumixed) {
+      gpu_add_to_power3_orig_mixed(d_threepcf, d_weight3pcf,
+        weights, lut3_i, lut3_j, lut3_ct,
+        NBIN, NLM, nouter3, ORDER, np);
+    } else {
+      gpu_add_to_power3_orig(d_threepcf, d_weight3pcf,
+	weights, lut3_i, lut3_j, lut3_ct,
+	NBIN, NLM, nouter3, ORDER, np);
+    }
+  }
+#endif
+
+  inline void add_to_power(Multipoles *mult, Float wp) {
+    // wp is the primary galaxy weight
+    // Now use all of the binned multipoles to compute the
+    // spherical harmonics in all bins and then the cross-powers.
+    // Need some scratch space:
+    // This also applies the weight of the primary galaxy.
+    MultTimer.Start();
+    Complex alm[NBIN][NLM];   // Apparently this initializes to zero
+
+    //only do alm calcs here if CPU mode
+    if (_gpumode == 0) {
 	for (int i=0; i<NBIN; i++) {
 	    Float *m = mult[i].multipoles();
 	    bincounts[i] += mult[i].ncount();
@@ -733,50 +790,53 @@ class NPCF {
 	    Complex *almbin = &(alm[i][0]);
 #include "spherical_harmonics.cpp"
 	}
-//}
+    }
 
 #define RealProduct(a,b) (a.real()*b.real()+a.imag()*b.imag())
 
-        //compute conjugates if not gpu mode
-        Complex almconj[NBIN][NLM];
-        //if (_gpumode == 0) {
-          for(int x=0;x<NBIN;x++){
-            for(int l=0, y=0;l<=ORDER;l++){
-              for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
-            }
-          }
-        //}
-        MultTimer.Stop();
+    //compute conjugates if not gpu mode
+    Complex almconj[NBIN][NLM];
+    if (_gpumode == 0) {
+      for(int x=0;x<NBIN;x++){
+        for(int l=0, y=0;l<=ORDER;l++){
+          for(int m=0;m<=l;m++,y++) almconj[x][y] = conj(alm[x][y]);
+        }
+      }
+    }
+    MultTimer.Stop();
 
-        // COMPUTE 3PCF CONTRIBUTIONS
-        // Precompute complex conjugates of all alm (for m>=0)
-        BinTimer3.Start();
+    // COMPUTE 3PCF CONTRIBUTIONS
+    // Precompute complex conjugates of all alm (for m>=0)
+    BinTimer3.Start();
 
+    //GPU mode uses method add_to_power3_gpu 
+    if (_gpumode == 0) {
 	for (int i=0, ct=0; i<NBIN; i++) {
 	    for (int j=i+1; j<NBIN; j++, ct++) {
-  		  // Fill in a triangle of threepcf radial bins.
+  		// Fill in a triangle of threepcf radial bins.
     		// We want to compute the sum over m of Ylm[i] Yl(-m)[j] = Ylm[i]Ylm*[j](-1)^m
     		// For m=0, that's just a_l0^2
     		// For others, (a+bi)*(A-Bi) + (a-bi)*(A+Bi) = 2*(a*A+b*B)
     		// Note we use a different normalization convention to that of Slepian/Eisenstein 2015
 
-        // Effectively we recast Sum_{m} a_m b_{-m} to Sum_{m>=0} (-1)^m * sym * F[a_m, b_m]
-        // where sym = 1 if m=0 and 2 else, and F[a, b] = Re[a]Re[b]+Im[a]Im[b]
-        // We've put that factor of 2 and the (-1)^m in the weight3pcf[] array.
+                // Effectively we recast Sum_{m} a_m b_{-m} to Sum_{m>=0} (-1)^m * sym * F[a_m, b_m]
+                // where sym = 1 if m=0 and 2 else, and F[a, b] = Re[a]Re[b]+Im[a]Im[b]
+                // We've put that factor of 2 and the (-1)^m in the weight3pcf[] array.
 
     		for (int ell=0, n=0; ell<=ORDER; ell++) {
   		    for (int mm=0; mm<=ell; mm++, n++) {
       			// n counts the (ell,m)
-            // indexing isn't super efficient here, but matches that of 4PCF (where it is more important)
+                        // indexing isn't super efficient here, but matches that of 4PCF (where it is more important)
       			// Our definition is that the power is (-1)^ell / Sqrt(2ell+1) * Sum_m a_lm[a] * a_lm[b].conj()
       			threepcf[ell*N3PCF+ct] +=
-      			    wp*(alm[i][n]*almconj[j][n]).real()*weight3pcf[n]; //* 4.0 * M_PI / (2*ell+1.0);
-          }
+      			    wp*(alm[i][n]*almconj[j][n]).real()*weight3pcf[n]; // * 4.0 * M_PI / (2*ell+1.0);
+                    }
+                }
+            }
         }
-      }
     }
 
-  BinTimer3.Stop();
+    BinTimer3.Stop();
 
 #ifdef DISCONNECTED
 
@@ -787,13 +847,13 @@ class NPCF {
     Complex tmp;
 
     // Iterate over angular bins
-  	for (int ell=0, n=0; ell<=ORDER; ell++) {
-	    for (int mm=-ell; mm<=ell; mm++, n++) {
-        weight1 = wp*weightdiscon[n];
-        // Add to array, taking conjugate if necessary
-        if (mm<0) for(int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*almconj[i][ell*(ell+1)/2-mm];
-        else for (int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*alm[i][ell*(ell+1)/2+mm];
-      }
+    for (int ell=0, n=0; ell<=ORDER; ell++) {
+        for (int mm=-ell; mm<=ell; mm++, n++) {
+            weight1 = wp*weightdiscon[n];
+            // Add to array, taking conjugate if necessary
+            if (mm<0) for(int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*almconj[i][ell*(ell+1)/2-mm];
+            else for (int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*alm[i][ell*(ell+1)/2+mm];
+        }
     }
 
     // SECOND TERM
@@ -1657,25 +1717,33 @@ class NPCF {
 
     void free_gpu_memory() {
 #ifdef GPU
+      gpu_free_luts3(lut3_i, lut3_j, lut3_ct);
+      if (_gpufloat) gpu_free_memory3(f_threepcf, f_weight3pcf); else gpu_free_memory4(d_threepcf, d_weight3pcf);
+
+#ifdef FOURPCF
       gpu_free_luts4(lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_n,
 	lut4_zeta, lut4_i, lut4_j, lut4_k);
+      if (_gpufloat) gpu_free_memory4(f_fourpcf, f_weight4pcf); else gpu_free_memory4(d_fourpcf, d_weight4pcf);
+      gpu_free_memory_m4(lut4_m1, lut4_m2);
+#endif
+
+#ifdef FIVEPCF
       gpu_free_luts(lut5_l1, lut5_l2, lut5_l12, lut5_l3, lut5_l4, lut5_odd,
 	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l);
-      if (_gpufloat) {
-        gpu_free_memory4(f_fourpcf, f_weight4pcf);
-        gpu_free_memory(f_fivepcf, f_weight5pcf);
-      } else {
-        gpu_free_memory4(d_fourpcf, d_weight4pcf);
-        gpu_free_memory(d_fivepcf, d_weight5pcf);
-      }
-      gpu_free_memory_m4(lut4_m1, lut4_m2);
+      if (_gpufloat) gpu_free_memory(f_fivepcf, f_weight5pcf); else gpu_free_memory(d_fivepcf, d_weight5pcf);
       gpu_free_memory_m(lut5_m1, lut5_m2, lut5_m3);
+#endif
       gpu_free_memory_alms(!_gpufloat && !_gpumixed);
 #endif
     }
 
     void do_copy_memory() {
 #ifdef GPU
+      if (_gpufloat) {
+        copy_threepcf(&f_threepcf, threepcf, NL*N3PCF);
+      } else {
+        copy_threepcf(&d_threepcf, threepcf, NL*N3PCF);
+      }
 #ifdef FOURPCF
       if (_gpufloat) {
         copy_fourpcf(&f_fourpcf, fourpcf, nell4*N4PCF);
