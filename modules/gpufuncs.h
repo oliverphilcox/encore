@@ -1,7 +1,9 @@
 // NBIN is the number of bins we'll sort the radii into. Must be at least N-1 for the N-point function
 #define NBIN 20
 // THREADS_PER_BLOCK is the number of threads in a block - default is 512 
-#define THREADS_PER_BLOCK 512 
+#define THREADS_PER_BLOCK 512
+// DISCON2_PARTICLES_PER_THREAD defines the number of particles accumulated per thread
+#define DISCON2_PARTICLES_PER_THREAD 1000
 
 // alm accumulation code
 void accumulate_multipoles(double *d_mult, int *d_mult_ct, double *x_array, double *y_array,
@@ -38,7 +40,55 @@ void gpu_add_to_power3_orig_float(float *d_threepcf, float *d_weight3pcf,
 void gpu_add_to_power3_orig_mixed(double *d_threepcf, double *d_weight3pcf,
         double *weights, int *lut3_i, int *lut3_j, int *lut3_ct,
         int nb, int nlm, int nouter, int order, int np);
-        
+
+// ======================================================= /
+
+//DISCONNECTED 4PCF kernels
+//Only 1 kernel option for DISCONNECTED 4PCF, 3 precision modes
+void gpu_add_to_power_discon1_orig(double *d_discon1_r, double *d_discon1_i,
+	double *d_weightdiscon, double *weights,
+	int *lut_discon_ell, int *lut_discon_mm, 
+        int nb, int nlm, int ndiscon1, int order, int np);
+
+void gpu_add_to_power_discon1_orig_float(float *f_discon1_r,
+	float *f_discon1_i, float *f_weightdiscon,
+	double *weights, int *lut_discon_ell,
+	int *lut_discon_mm, int nb, int nlm, int ndiscon1, int order, int np);
+
+void gpu_add_to_power_discon1_orig_mixed(double *d_discon1_r,
+	double *d_discon1_i, double *d_weightdiscon,
+	double *weights, int *lut_discon_ell,
+	int *lut_discon_mm, int nb, int nlm, int ndiscon1, int order, int np);
+
+void gpu_add_to_power_discon2_orig(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int nb, int nlm, int nouter, int order, int ninner, int np);
+
+void gpu_add_to_power_discon2_b(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double wp, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner);
+
+void gpu_add_to_power_discon2_final(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int np);
+
+void gpu_add_to_power_discon2_final_float(float *f_discon2_r, float *f_discon2_i,
+        float *f_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int np);
+
+void gpu_add_to_power_discon2_final_mixed(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int np);
+
 // ======================================================= /
 
 //4PCF kernels
@@ -158,6 +208,67 @@ void gpu_free_memory3(double *threepcf, double *weight3pcf);
 void gpu_free_memory3(float *threepcf, float *weight3pcf);
 
 // ======================================================= /
+
+//DISCONNECTED 4PCF LUTs
+void gpu_allocate_luts_discon1(int **p_lut_discon_ell, int **p_lut_discon_mm,
+	int size);
+
+void gpu_allocate_discon1(double **p_discon1_r, double **p_discon1_i,
+	std::complex<double> *discon1, int size);
+
+void gpu_allocate_weightdiscon(double **p_weightdiscon, double *weightdiscon,
+	int size);
+
+void copy_discon1(double **p_discon1_r, double **p_discon1_i,
+	std::complex<double> *discon1, int size);
+
+void gpu_allocate_discon1(float **p_discon1_r, float **p_discon1_i,
+        std::complex<double> *discon1, int size);
+
+void gpu_allocate_weightdiscon(float **p_weightdiscon, double *weightdiscon,
+	int size);
+
+void copy_discon1(float **p_discon1_r, float **p_discon1_i,
+	std::complex<double> *discon1, int size);
+
+//DISCON2 term
+void gpu_allocate_luts_discon2(int **p_lut_discon_ell1,
+	int **p_lut_discon_ell2, int **p_lut_discon_mm1,
+	int **p_lut_discon_mm2, int size);
+
+void gpu_allocate_luts_discon2_inner(int **p_lut_discon_i,
+	int **p_lut_discon_j, int size);
+
+void gpu_allocate_discon2(double **p_discon2_r, double **p_discon2_i,
+        std::complex<double> *discon2, int size);
+
+void copy_discon2(double **p_discon2_r, double **p_discon2_i,
+        std::complex<double> *discon2, int size);
+
+void gpu_allocate_discon2(float **p_discon2_r, float **p_discon2_i,
+        std::complex<double> *discon2, int size);
+
+void copy_discon2(float **p_discon2_r, float **p_discon2_i,
+        std::complex<double> *discon2, int size);
+
+// ======================================================= /
+
+//free memory
+void gpu_free_luts_discon1(int *lut_discon_ell, int *lut_discon_mm);
+
+void gpu_free_memory_discon1(double *d_discon1_r, double *d_discon1_i,
+	double *weightdiscon);
+
+void gpu_free_memory_discon1(float *f_discon1_r, float *f_discon1_i,
+	float *weightdiscon);
+
+//DISCON2 term
+void gpu_free_luts_discon2(int *lut_discon_ell1, int *lut_discon_ell2,
+	int *lut_discon_mm1, int *lut_discon_mm2, int *lut_discon_i,
+	int *lut_discon_j);
+
+// ======================================================= /
+
 //4PCF LUTs
 void gpu_allocate_luts4(int **p_lut4_l1, int **p_lut4_l2, int **p_lut4_l3,
 	bool **p_lut4_odd, int **p_lut4_n, int **p_lut4_zeta, int **p_lut4_i,
@@ -260,7 +371,7 @@ void gpu_allocate_multipoles(double **p_msave, int **p_csave,
 
 void gpu_allocate_multipoles_fast(double **p_msave, int **p_csave,
         int **p_start_list, int **p_np_list, int **p_cellnums,
-        int nmult, int nbin, int np, int nmax, int nc);
+        int nmult, int nbin, int np, int maxp, int nmax, int nc);
 
 void gpu_allocate_particle_arrays(double **p_posx, double **p_posy, double **p_posz, double **p_weights, int np);
 

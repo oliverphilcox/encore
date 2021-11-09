@@ -11,10 +11,12 @@
 class NPCF {
 // This should accumulate the NPCF contributions, for all combination of bins.
   public:
+int dct = 0;
 #ifdef GPU
     bool generate_luts3 = true;
+    bool generate_luts_discon = true; //disconnected 4PCF
     bool generate_luts4 = true;
-    bool generate_luts = true;
+    bool generate_luts = true; //5PCF
     //3PCF LUTs and arrays
     //declare LUTs as pointers -- we'll want to allocate and populate once
     int *lut3_i, *lut3_j, *lut3_ct;
@@ -22,6 +24,21 @@ class NPCF {
     //declare pointers for float operations - only used if -float but
     //simply declaring them doesn't cost much 
     float *f_weight3pcf, *f_threepcf;
+
+    //DISCONNECTED 4PCF LUTs and arrays
+    //declare LUTs as pointers -- we'll want to allocate and populate once
+    int *lut_discon_ell, *lut_discon_mm;
+    double *d_weightdiscon, *d_discon1_r, *d_discon1_i;
+    //allocate both real and imaginary components of discon1 for GPU
+    //since atomicAdd cannot be done on complex
+    //declare pointers for float operations - only used if -float but
+    //simply declaring them doesn't cost much 
+    float *f_weightdiscon, *f_discon1_r, *f_discon1_i;
+    //DISCON2 term
+    int *lut_discon_ell1, *lut_discon_ell2, *lut_discon_mm1, *lut_discon_mm2;
+    int *lut_discon_i, *lut_discon_j;
+    double *d_discon2_r, *d_discon2_i;
+    float *f_discon2_r, *f_discon2_i;
 
     //declare LUTs as pointers -- we'll want to allocate and populate once
     int *lut4_l1, *lut4_l2, *lut4_l3;
@@ -757,6 +774,96 @@ class NPCF {
 	NBIN, NLM, nouter3, ORDER, np);
     }
   }
+
+  #ifdef DISCONNECTED
+    inline void add_to_power_disconnected_gpu(double *weights, int np) {
+    //We need a separate method to call for DISCONNECTED 4PCF on the GPU
+    //since the kernel will be called once per data chunk (usually once
+    //total) instead of per particle.  Since alm and almconj are computed
+    //on GPU as well, this is easy to separate out.
+
+    if (_gpumode == 0) return;
+    int ndiscon1 = NL*NL*NBIN;
+    int nouter = NL*NL*NL*NL;
+    int ndiscon2 = nouter*N3PCF;
+    int ninner = N3PCF;
+    if (generate_luts_discon) {
+      //can only get here in _gpumode > 0
+      generate_luts_discon = false;
+      //if not using memcpy, allocate pointers on device here
+      int size_w = (ORDER+1)*(ORDER+1);
+      if (_gpufloat) {
+        gpu_allocate_weightdiscon(&f_weightdiscon, weightdiscon, size_w);
+        gpu_allocate_discon1(&f_discon1_r, &f_discon1_i, discon1, ndiscon1);
+	gpu_allocate_discon2(&f_discon2_r, &f_discon2_i, discon2, ndiscon2);
+      } else {
+        gpu_allocate_weightdiscon(&d_weightdiscon, weightdiscon, size_w);
+        gpu_allocate_discon1(&d_discon1_r, &d_discon1_i, discon1, ndiscon1); 
+        gpu_allocate_discon2(&d_discon2_r, &d_discon2_i, discon2, ndiscon2);
+      }
+      gpu_allocate_luts_discon1(&lut_discon_ell, &lut_discon_mm, NL*NL);
+      gpu_allocate_luts_discon2(&lut_discon_ell1, &lut_discon_ell2,
+	&lut_discon_mm1,  &lut_discon_mm2, nouter); 
+      for (int ell=0, n=0; ell<=ORDER; ell++) {
+        for (int mm=-ell; mm<=ell; mm++, n++) {
+	  lut_discon_ell[n] = ell;
+          lut_discon_mm[n] = mm;
+        }
+      }
+      //DISCON2 LUTs
+      for (int ell1=0, n=0; ell1<=ORDER; ell1++) {
+        for (int mm1=-ell1; mm1<=ell1; mm1++) {
+          for (int ell2=0; ell2<=ORDER; ell2++) {
+            for (int mm2=-ell2; mm2<=ell2; mm2++, n++){
+              lut_discon_ell1[n] = ell1;
+              lut_discon_ell2[n] = ell2;
+              lut_discon_mm1[n] = mm1;
+              lut_discon_mm2[n] = mm2;
+            }
+          }
+        }
+      }
+      //allocate lut_discon_i, lut_discon_j
+      gpu_allocate_luts_discon2_inner(&lut_discon_i, &lut_discon_j, ninner);
+      int iinner = 0;
+      for (int ii = 0; ii < NBIN; ii++) {
+	for (int jj = ii+1; jj < NBIN; jj++, iinner++) {
+	  lut_discon_i[iinner] = ii;
+	  lut_discon_j[iinner] = jj;
+	}
+      }
+    }
+
+    if (_gpufloat) {
+      gpu_add_to_power_discon1_orig_float(f_discon1_r, f_discon1_i,
+	f_weightdiscon, weights, lut_discon_ell, lut_discon_mm, 
+        NBIN, NLM, ndiscon1, ORDER, np);
+
+      gpu_add_to_power_discon2_final_float(f_discon2_r, f_discon2_i,
+	f_weightdiscon, weights, lut_discon_ell1, lut_discon_ell2,
+	lut_discon_mm1, lut_discon_mm2, lut_discon_i, lut_discon_j,
+	NBIN, NLM, nouter, ORDER, N3PCF, np);
+    } else if (_gpumixed) {
+      gpu_add_to_power_discon1_orig_mixed(d_discon1_r, d_discon1_i,
+	d_weightdiscon, weights, lut_discon_ell, lut_discon_mm, 
+        NBIN, NLM, ndiscon1, ORDER, np);
+
+      gpu_add_to_power_discon2_final_mixed(d_discon2_r, d_discon2_i,
+	d_weightdiscon, weights, lut_discon_ell1, lut_discon_ell2,
+	lut_discon_mm1, lut_discon_mm2, lut_discon_i, lut_discon_j,
+	NBIN, NLM, nouter, ORDER, N3PCF, np);
+    } else {
+      gpu_add_to_power_discon1_orig(d_discon1_r, d_discon1_i, d_weightdiscon,
+        weights, lut_discon_ell, lut_discon_mm, 
+        NBIN, NLM, ndiscon1, ORDER, np);
+
+      gpu_add_to_power_discon2_final(d_discon2_r, d_discon2_i, d_weightdiscon,
+        weights, lut_discon_ell1, lut_discon_ell2, lut_discon_mm1,
+        lut_discon_mm2, lut_discon_i, lut_discon_j, NBIN, NLM, nouter,
+	ORDER, N3PCF, np);
+    }
+  }
+  #endif
 #endif
 
   inline void add_to_power(Multipoles *mult, Float wp) {
@@ -841,50 +948,69 @@ class NPCF {
 #ifdef DISCONNECTED
 
     BinTimerDisc.Start();
+    if (_gpumode == 0) {
 
-    // FIRST TERM
-    Float weight1,weight2;
-    Complex tmp;
+      // FIRST TERM
+      Float weight1,weight2;
+      Complex tmp;
 
-    // Iterate over angular bins
-    for (int ell=0, n=0; ell<=ORDER; ell++) {
+      // Iterate over angular bins
+      for (int ell=0, n=0; ell<=ORDER; ell++) {
         for (int mm=-ell; mm<=ell; mm++, n++) {
-            weight1 = wp*weightdiscon[n];
-            // Add to array, taking conjugate if necessary
-            if (mm<0) for(int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*almconj[i][ell*(ell+1)/2-mm];
-            else for (int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*alm[i][ell*(ell+1)/2+mm];
+          weight1 = wp*weightdiscon[n];
+          // Add to array, taking conjugate if necessary
+          if (mm<0) for(int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*almconj[i][ell*(ell+1)/2-mm];
+          else for (int i=0; i<NBIN; i++) discon1[n*NBIN+i] += weight1*alm[i][ell*(ell+1)/2+mm];
         }
-    }
+      }
 
-    // SECOND TERM
-    // Accumulate only if first particle is a random.
-    if (((wp<0)&&(qbalance))||(qinvert)){
-
-      // Iterate over radial bins
-      for (int ell1=0, n1=0, ct_ang=0; ell1<=ORDER; ell1++) {
-        for (int mm1=-ell1; mm1<=ell1; mm1++, n1++) {
-          weight1 = wp*weightdiscon[n1];
-          for (int ell2=0, n2=0; ell2<=ORDER; ell2++) {
-            for (int mm2=-ell2; mm2<=ell2; mm2++, n2++,ct_ang++){
+      // SECOND TERM
+      // Accumulate only if first particle is a random.
+      if (((wp<0)&&(qbalance))||(qinvert)){
+dct++;
+        // Iterate over radial bins
+        for (int ell1=0, n1=0, ct_ang=0; ell1<=ORDER; ell1++) {
+          for (int mm1=-ell1; mm1<=ell1; mm1++, n1++) {
+            weight1 = wp*weightdiscon[n1];
+            for (int ell2=0, n2=0; ell2<=ORDER; ell2++) {
+              for (int mm2=-ell2; mm2<=ell2; mm2++, n2++,ct_ang++){
                 weight2 = weight1*weightdiscon[n2];
                 if(mm1<0){
                   for(int i=0, ct_rad=0; i<NBIN; i++) {
                     tmp = weight2*almconj[i][ell1*(ell1+1)/2-mm1];
-                    if(mm2<0) for(int j=i+1; j<NBIN; j++, ct_rad++) discon2[ct_ang*N3PCF+ct_rad] += tmp*almconj[j][ell2*(ell2+1)/2-mm2];
-                    else for(int j=i+1; j<NBIN; j++, ct_rad++) discon2[ct_ang*N3PCF+ct_rad] += tmp*alm[j][ell2*(ell2+1)/2+mm2];
+                    if(mm2<0) {
+                      for(int j=i+1; j<NBIN; j++, ct_rad++) {
+		        discon2[ct_ang*N3PCF+ct_rad] += tmp*almconj[j][ell2*(ell2+1)/2-mm2];
+//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(weight1,0);
+                      }
+		    } else {
+                      for(int j=i+1; j<NBIN; j++, ct_rad++) {
+		        discon2[ct_ang*N3PCF+ct_rad] += tmp*alm[j][ell2*(ell2+1)/2+mm2];
+//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(weight1,0);
+                      }
+		    }
                   }
-                }
-                else{
+                } else {
                   for(int i=0, ct_rad=0; i<NBIN; i++) {
                     tmp = weight2*alm[i][ell1*(ell1+1)/2+mm1];
-                    if(mm2<0) for(int j=i+1; j<NBIN; j++, ct_rad++) discon2[ct_ang*N3PCF+ct_rad] += tmp*almconj[j][ell2*(ell2+1)/2-mm2];
-                    else for(int j=i+1; j<NBIN; j++, ct_rad++) discon2[ct_ang*N3PCF+ct_rad] += tmp*alm[j][ell2*(ell2+1)/2+mm2];
+                    if(mm2<0) {
+                      for(int j=i+1; j<NBIN; j++, ct_rad++) {
+		        discon2[ct_ang*N3PCF+ct_rad] += tmp*almconj[j][ell2*(ell2+1)/2-mm2];
+//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(0,weight1);
+                      }
+		    } else {
+                      for(int j=i+1; j<NBIN; j++, ct_rad++) {
+		        discon2[ct_ang*N3PCF+ct_rad] += tmp*alm[j][ell2*(ell2+1)/2+mm2];
+//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(0,weight1);
+                      }
+		    }
                   }
                 }
               }
             }
           }
         }
+      }
     }
     BinTimerDisc.Stop();
 
@@ -1718,8 +1844,13 @@ class NPCF {
     void free_gpu_memory() {
 #ifdef GPU
       gpu_free_luts3(lut3_i, lut3_j, lut3_ct);
-      if (_gpufloat) gpu_free_memory3(f_threepcf, f_weight3pcf); else gpu_free_memory4(d_threepcf, d_weight3pcf);
+      if (_gpufloat) gpu_free_memory3(f_threepcf, f_weight3pcf); else gpu_free_memory3(d_threepcf, d_weight3pcf);
 
+#ifdef DISCONNECTED
+      gpu_free_luts_discon1(lut_discon_ell, lut_discon_mm);
+      gpu_free_luts_discon2(lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2, lut_discon_i, lut_discon_j);
+      if (_gpufloat) gpu_free_memory_discon1(f_discon1_r, f_discon1_i, f_weightdiscon); else gpu_free_memory_discon1(d_discon1_r, d_discon1_i, d_weightdiscon);
+#endif
 #ifdef FOURPCF
       gpu_free_luts4(lut4_l1, lut4_l2, lut4_l3, lut4_odd, lut4_n,
 	lut4_zeta, lut4_i, lut4_j, lut4_k);
@@ -1744,6 +1875,15 @@ class NPCF {
       } else {
         copy_threepcf(&d_threepcf, threepcf, NL*N3PCF);
       }
+#ifdef DISCONNECTED
+      if (_gpufloat) {
+        copy_discon1(&f_discon1_r, &f_discon1_i, discon1, NL*NL*NBIN);
+        copy_discon2(&f_discon2_r, &f_discon2_i, discon2, NL*NL*NL*NL*N3PCF); 
+      } else {
+        copy_discon1(&d_discon1_r, &d_discon1_i, discon1, NL*NL*NBIN);
+        copy_discon2(&d_discon2_r, &d_discon2_i, discon2, NL*NL*NL*NL*N3PCF);
+      }
+#endif
 #ifdef FOURPCF
       if (_gpufloat) {
         copy_fourpcf(&f_fourpcf, fourpcf, nell4*N4PCF);

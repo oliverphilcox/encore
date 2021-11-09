@@ -68,7 +68,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
       } else if (_gpump == 2) {
         gpu_allocate_multipoles_fast(&msave, &csave,
 		&start_list, &np_list, &cellnums,
-		NMULT, NBIN, np, nmax, grid->ncells);
+		NMULT, NBIN, np, maxp, nmax, grid->ncells);
       }
 
       //allocate arrays contianing pos and weights for each particle
@@ -265,6 +265,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 	  //needed for fast kernel
           int nthreads = cellrange*cellrange*cellrange*icnt;
 	  if (_gpump == 1) nthreads = (int)dcnt;
+	  cnt += nthreads;
 	  bool usefloat = (_gpufloat || _gpumixed); 
 
           if(thread==0) accmult.Start();
@@ -312,9 +313,15 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 	  if(thread==0) sphtime.Stop();
 
           if(thread==0) powertime.Start();
+            gpu_device_synchronize(); //synchronize before copying data
 	  //call 3PCF add_to_power here
 	  npcf[thread].add_to_power3_gpu(weights, icnt);
           //gpu_device_synchronize(); //synchronize before copying data
+
+  #ifdef DISCONNECTED
+          //call DISCONNECTED 4PCF here
+	  npcf[thread].add_to_power_disconnected_gpu(weights, icnt);
+  #endif
 
 	  //reset dcnt and icnt
           dcnt = 0;
