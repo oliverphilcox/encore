@@ -10,9 +10,10 @@ int count = 0;
 int pstart = 0; //particle number used for indexing
 int pstart5 = 0;
 int pstart3 = 0;
+int pstart_discon = 0;
+int pstart_discon2 = 0;
 thrust::complex<double>* d_alm, *d_almconj; //define d_alm and d_almconj here
 thrust::complex<float>* f_alm, *f_almconj; //for use in float kernels
-
 
 // ALM COMPUTATION (in beta)
 
@@ -203,6 +204,462 @@ __global__ void add_to_power3_kernel_orig_mixed(double *threepcf, double *weight
 
 
 // ======================================================= /
+
+//DISCONNECTED 4PCF kernels
+//Only 1 kernel option for DISCONNECTED 4PCF, 3 precision modes
+__global__ void add_to_power_discon1_kernel_orig(double *discon1_r,
+	double *discon1_i, double *weightdiscon,
+	double *weights, thrust::complex<double>* alm,
+	thrust::complex<double> *almconj, int *lut_discon_ell,
+	int *lut_discon_mm, int nb, int nlm, int ndiscon, int order, int np,
+	int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= ndiscon * np) return;
+    //compute indices for LUTs
+    int ip = i/ndiscon; //particle number
+    int idx = i%ndiscon; //index in discon1
+    int n = idx / nb; //index in LUTs (n) 
+    int binidx = idx % nb; //bin idx (i)
+    int almidx = ip*nb*nlm + binidx*nlm;
+    //outer loop indices
+    int ell = lut_discon_ell[n];
+    int mm = lut_discon_mm[n];
+    //calc weight
+    double wp = weights[ip+pstart];
+    //calc indices outside of loop
+    double weight1 = wp*weightdiscon[n];
+
+    if (mm < 0) {
+      thrust::complex<double> delta = almconj[almidx+ell*(ell+1)/2-mm];
+      atomicAdd(&discon1_r[n*nb+binidx], weight1*(delta.real()));
+      atomicAdd(&discon1_i[n*nb+binidx], weight1*(delta.imag()));
+    } else {
+      thrust::complex<double> delta = alm[almidx+ell*(ell+1)/2+mm];
+      atomicAdd(&discon1_r[n*nb+binidx], weight1*(delta.real()));
+      atomicAdd(&discon1_i[n*nb+binidx], weight1*(delta.imag()));
+    }
+}
+
+__global__ void add_to_power_discon1_kernel_orig_float(float *discon1_r,
+	float *discon1_i, float *weightdiscon,
+        double *weights, thrust::complex<float>* alm,
+        thrust::complex<float> *almconj, int *lut_discon_ell,
+        int *lut_discon_mm, int nb, int nlm, int ndiscon, int order, int np,
+        int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= ndiscon * np) return;
+    //compute indices for LUTs
+    int ip = i/ndiscon; //particle number
+    int idx = i%ndiscon; //index in discon1
+    int n = idx / nb; //index in LUTs (n) 
+    int binidx = idx % nb; //bin idx (i)
+    int almidx = ip*nb*nlm + binidx*nlm;
+    //outer loop indices
+    int ell = lut_discon_ell[n];
+    int mm = lut_discon_mm[n];
+    //calc weight
+    float wp = (float)weights[ip+pstart];
+    //calc indices outside of loop
+    float weight1 = wp*weightdiscon[n];
+    if (mm < 0) {
+      thrust::complex<float> delta = almconj[almidx+ell*(ell+1)/2-mm];
+      atomicAdd(&discon1_r[n*nb+binidx], weight1*(delta.real()));
+      atomicAdd(&discon1_i[n*nb+binidx], weight1*(delta.imag()));
+    } else {
+      thrust::complex<float> delta = alm[almidx+ell*(ell+1)/2+mm];
+      atomicAdd(&discon1_r[n*nb+binidx], weight1*(delta.real()));
+      atomicAdd(&discon1_i[n*nb+binidx], weight1*(delta.imag()));
+    }
+}
+
+__global__ void add_to_power_discon1_kernel_orig_mixed(double *discon1_r,
+	double *discon1_i, double *weightdiscon,
+        double *weights, thrust::complex<float>* alm,
+        thrust::complex<float> *almconj, int *lut_discon_ell,
+        int *lut_discon_mm, int nb, int nlm, int ndiscon, int order, int np,
+        int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= ndiscon * np) return;
+    //compute indices for LUTs
+    int ip = i/ndiscon; //particle number
+    int idx = i%ndiscon; //index in discon1
+    int n = idx / nb; //index in LUTs (n) 
+    int binidx = idx % nb; //bin idx (i)
+    int almidx = ip*nb*nlm + binidx*nlm;
+    //outer loop indices
+    int ell = lut_discon_ell[n];
+    int mm = lut_discon_mm[n];
+    //calc weight
+    float wp = (float)weights[ip+pstart];
+    //calc indices outside of loop
+    double weight1 = wp*weightdiscon[n];
+    if (mm < 0) {
+      thrust::complex<float> delta = almconj[almidx+ell*(ell+1)/2-mm];
+      atomicAdd(&discon1_r[n*nb+binidx], weight1*(delta.real()));
+      atomicAdd(&discon1_i[n*nb+binidx], weight1*(delta.imag()));
+    } else {
+      thrust::complex<float> delta = alm[almidx+ell*(ell+1)/2+mm];
+      atomicAdd(&discon1_r[n*nb+binidx], weight1*(delta.real()));
+      atomicAdd(&discon1_i[n*nb+binidx], weight1*(delta.imag()));
+    }
+}
+
+// ======================================================= /
+
+//DISCON2 term
+__global__ void add_to_power_discon2_kernel_orig(double *discon2_r,
+        double *discon2_i, double *weightdiscon,
+        double *weights, thrust::complex<double>* alm,
+        thrust::complex<double> *almconj, int *lut_discon_ell1,
+	int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+	int nb, int nlm, int nouter, int order, int ninner, int np,
+        int pstart) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= nouter * np) return;
+    //compute indices for LUTs
+    int ip = i/nouter; //particle number
+    int ct_ang = i % nouter; //ct_ang = 0 to 1295 for nl=6
+    int nl2 = (order+1)*(order+1); // 36
+    int n1 = ct_ang / nl2; //n1 outer index
+    int n2 = ct_ang % nl2; //n2 inner index
+
+    int almidx = ip*nb*nlm;
+    //outer loop indices
+    int ell1 = lut_discon_ell1[ct_ang];
+    int mm1 = lut_discon_mm1[ct_ang];
+    int ell2 = lut_discon_ell2[ct_ang];
+    int mm2 = lut_discon_mm2[ct_ang];
+    //calc weight
+    double wp = weights[ip+pstart];
+    //calc indices outside of loop
+    double weight1 = wp*weightdiscon[n1];
+    double weight2 = weight1*weightdiscon[n2];
+
+    if (mm1 < 0) {
+      for (int ii = 0, ct_rad = 0; ii < nb; ii++) {
+	thrust::complex<double> alm1 = weight2*almconj[almidx+ii*nlm+ell1*(ell1+1)/2-mm1];
+        if (mm2 < 0) {
+          for (int jj = ii+1; jj < nb; jj++, ct_rad++) {
+            thrust::complex<double> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+            atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], delta.real());
+            atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], delta.imag());
+          }
+        } else {
+          for (int jj = ii+1; jj < nb; jj++, ct_rad++) {
+            thrust::complex<double> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+            atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], delta.real());
+            atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], delta.imag());
+          }
+        }
+      }
+    } else {
+      for (int ii = 0, ct_rad = 0; ii < nb; ii++) {
+        thrust::complex<double> alm1 = weight2*alm[almidx+ii*nlm+ell1*(ell1+1)/2+mm1];
+        if (mm2 < 0) {
+          for (int jj = ii+1; jj < nb; jj++, ct_rad++) {
+            thrust::complex<double> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+            atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], delta.real());
+            atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], delta.imag());
+          }
+        } else {
+          for (int jj = ii+1; jj < nb; jj++, ct_rad++) {
+            thrust::complex<double> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+            atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], delta.real());
+            atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], delta.imag());
+          }
+        }
+      }
+    }
+}
+
+__global__ void add_to_power_discon2_kernel_b(double *discon2_r,
+	double *discon2_i, double *weightdiscon, double wp,
+	thrust::complex<double>* alm, thrust::complex<double> *almconj,
+	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
+	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int almidx) {
+    //wp and almidx passed as scalars 
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= nouter * ninner) return;
+    //compute indices for LUTs
+    int ct_ang = i % nouter; //ct_ang = 0 to 1295 for nl=6
+    int iinner = i / nouter; //0 to 189
+    int ct_rad = iinner;
+    int nl2 = (order+1)*(order+1); // 36
+    int n1 = ct_ang / nl2; //n1 outer index
+    int n2 = ct_ang % nl2; //n2 inner index
+
+    //outer loop indices
+    int ell1 = lut_discon_ell1[ct_ang];
+    int mm1 = lut_discon_mm1[ct_ang];
+    int ell2 = lut_discon_ell2[ct_ang];
+    int mm2 = lut_discon_mm2[ct_ang];
+    //calc indices outside of loop
+    double weight1 = wp*weightdiscon[n1];
+    double weight2 = weight1*weightdiscon[n2];
+
+    int ii = lut_discon_i[iinner];
+    int jj = lut_discon_j[iinner];
+
+    if (mm1 < 0) {
+      thrust::complex<double> alm1 = weight2*almconj[almidx+ii*nlm+ell1*(ell1+1)/2-mm1];
+      if (mm2 < 0) {
+        thrust::complex<double> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+        discon2_r[ct_ang*ninner+ct_rad] += delta.real();
+        discon2_i[ct_ang*ninner+ct_rad] += delta.imag();
+      } else {
+        thrust::complex<double> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+        discon2_r[ct_ang*ninner+ct_rad] += delta.real();
+        discon2_i[ct_ang*ninner+ct_rad] += delta.imag();
+      }
+    } else {
+      thrust::complex<double> alm1 = weight2*alm[almidx+ii*nlm+ell1*(ell1+1)/2+mm1];
+      if (mm2 < 0) {
+        thrust::complex<double> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+        discon2_r[ct_ang*ninner+ct_rad] += delta.real();
+        discon2_i[ct_ang*ninner+ct_rad] += delta.imag();
+      } else {
+        thrust::complex<double> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+        discon2_r[ct_ang*ninner+ct_rad] += delta.real();
+        discon2_i[ct_ang*ninner+ct_rad] += delta.imag();
+      }
+    }
+}
+
+__global__ void add_to_power_discon2_kernel_final(double *discon2_r,
+	double *discon2_i, double *weightdiscon, double *weights,
+	thrust::complex<double>* alm, thrust::complex<double> *almconj,
+	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
+	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner,
+	int np, int nprnd, int npblocks, int pstart) {
+    //wp and almidx passed as scalars 
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= npblocks * nouter * ninner) return;
+    //compute indices for LUTs
+    int ip0 = i/(nouter*ninner)*DISCON2_PARTICLES_PER_THREAD; //START particle number
+    int ipend = ip0+DISCON2_PARTICLES_PER_THREAD;
+    if (ipend > np) ipend = np;
+    int didx = i % (nouter*ninner); //index in discon2
+
+    int ct_ang = didx % nouter; //ct_ang = 0 to 1295 for nl=6
+    int iinner = didx / nouter; //0 to 189
+    int ct_rad = iinner;
+
+    int nl2 = (order+1)*(order+1); // 36
+    int n1 = ct_ang / nl2; //n1 outer index
+    int n2 = ct_ang % nl2; //n2 inner index
+
+    //outer loop indices
+    int ell1 = lut_discon_ell1[ct_ang];
+    int mm1 = lut_discon_mm1[ct_ang];
+    int ell2 = lut_discon_ell2[ct_ang];
+    int mm2 = lut_discon_mm2[ct_ang];
+
+    int ii = lut_discon_i[iinner];
+    int jj = lut_discon_j[iinner];
+
+    //local register to hold sum for this 1000 particles
+    double d2_r = 0, d2_i = 0;
+
+    for (int jp = ip0; jp < ipend; jp++) {
+      //calc weight
+      double wp = weights[jp+pstart];
+      //calc indices inside of loop
+      double weight1 = wp*weightdiscon[n1];
+      double weight2 = weight1*weightdiscon[n2];
+      int almidx = jp*nb*nlm;
+      if (mm1 < 0) {
+        thrust::complex<double> alm1 = weight2*almconj[almidx+ii*nlm+ell1*(ell1+1)/2-mm1];
+        if (mm2 < 0) {
+          thrust::complex<double> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        } else {
+          thrust::complex<double> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        }
+      } else {
+        thrust::complex<double> alm1 = weight2*alm[almidx+ii*nlm+ell1*(ell1+1)/2+mm1];
+        if (mm2 < 0) {
+          thrust::complex<double> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        } else {
+          thrust::complex<double> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        }
+      }
+    }
+    //now atomicAdd
+    atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], d2_r);
+    atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], d2_i);
+}
+
+__global__ void add_to_power_discon2_kernel_final_float(float *discon2_r,
+	float *discon2_i, float *weightdiscon, double *weights,
+	thrust::complex<float>* alm, thrust::complex<float> *almconj,
+	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
+	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner,
+	int np, int nprnd, int npblocks, int pstart) {
+    //wp and almidx passed as scalars 
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= npblocks * nouter * ninner) return;
+    //compute indices for LUTs
+    int ip0 = i/(nouter*ninner)*DISCON2_PARTICLES_PER_THREAD; //START particle number
+    int ipend = ip0+DISCON2_PARTICLES_PER_THREAD;
+    if (ipend > np) ipend = np;
+    int didx = i % (nouter*ninner); //index in discon2
+
+    int ct_ang = didx % nouter; //ct_ang = 0 to 1295 for nl=6
+    int iinner = didx / nouter; //0 to 189
+    int ct_rad = iinner;
+
+    int nl2 = (order+1)*(order+1); // 36
+    int n1 = ct_ang / nl2; //n1 outer index
+    int n2 = ct_ang % nl2; //n2 inner index
+
+    //outer loop indices
+    int ell1 = lut_discon_ell1[ct_ang];
+    int mm1 = lut_discon_mm1[ct_ang];
+    int ell2 = lut_discon_ell2[ct_ang];
+    int mm2 = lut_discon_mm2[ct_ang];
+
+    int ii = lut_discon_i[iinner];
+    int jj = lut_discon_j[iinner];
+
+    //local register to hold sum for this 1000 particles
+    float d2_r = 0, d2_i = 0;
+
+    for (int jp = ip0; jp < ipend; jp++) {
+      //calc weight
+      float wp = (float)weights[jp+pstart];
+      //calc indices inside of loop
+      float weight1 = wp*weightdiscon[n1];
+      float weight2 = weight1*weightdiscon[n2];
+      int almidx = jp*nb*nlm;
+      if (mm1 < 0) {
+        thrust::complex<float> alm1 = weight2*almconj[almidx+ii*nlm+ell1*(ell1+1)/2-mm1];
+        if (mm2 < 0) {
+          thrust::complex<float> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        } else {
+          thrust::complex<float> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        }
+      } else {
+        thrust::complex<float> alm1 = weight2*alm[almidx+ii*nlm+ell1*(ell1+1)/2+mm1];
+        if (mm2 < 0) {
+          thrust::complex<float> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        } else {
+          thrust::complex<float> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        }
+      }
+    }
+    //now atomicAdd
+    atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], d2_r);
+    atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], d2_i);
+}
+
+__global__ void add_to_power_discon2_kernel_final_mixed(double *discon2_r,
+	double *discon2_i, double *weightdiscon, double *weights,
+	thrust::complex<float>* alm, thrust::complex<float> *almconj,
+	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
+	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner,
+	int np, int nprnd, int npblocks, int pstart) {
+    //wp and almidx passed as scalars 
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    //nouter = dim of LUTs = N3PCF
+    if (i >= npblocks * nouter * ninner) return;
+    //compute indices for LUTs
+    int ip0 = i/(nouter*ninner)*DISCON2_PARTICLES_PER_THREAD; //START particle number
+    int ipend = ip0+DISCON2_PARTICLES_PER_THREAD;
+    if (ipend > np) ipend = np;
+    int didx = i % (nouter*ninner); //index in discon2
+
+    int ct_ang = didx % nouter; //ct_ang = 0 to 1295 for nl=6
+    int iinner = didx / nouter; //0 to 189
+    int ct_rad = iinner;
+
+    int nl2 = (order+1)*(order+1); // 36
+    int n1 = ct_ang / nl2; //n1 outer index
+    int n2 = ct_ang % nl2; //n2 inner index
+
+    //outer loop indices
+    int ell1 = lut_discon_ell1[ct_ang];
+    int mm1 = lut_discon_mm1[ct_ang];
+    int ell2 = lut_discon_ell2[ct_ang];
+    int mm2 = lut_discon_mm2[ct_ang];
+
+    int ii = lut_discon_i[iinner];
+    int jj = lut_discon_j[iinner];
+
+    //local register to hold sum for this 1000 particles
+    double d2_r = 0, d2_i = 0;
+
+    for (int jp = ip0; jp < ipend; jp++) {
+      //calc weight
+      float wp = (float)weights[jp+pstart];
+      //calc indices inside of loop
+      float weight1 = wp*weightdiscon[n1];
+      float weight2 = weight1*weightdiscon[n2];
+      int almidx = jp*nb*nlm;
+      if (mm1 < 0) {
+        thrust::complex<float> alm1 = weight2*almconj[almidx+ii*nlm+ell1*(ell1+1)/2-mm1];
+        if (mm2 < 0) {
+          thrust::complex<float> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        } else {
+          thrust::complex<float> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        }
+      } else {
+        thrust::complex<float> alm1 = weight2*alm[almidx+ii*nlm+ell1*(ell1+1)/2+mm1];
+        if (mm2 < 0) {
+          thrust::complex<float> delta = alm1*almconj[almidx+jj*nlm+ell2*(ell2+1)/2-mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        } else {
+          thrust::complex<float> delta = alm1*alm[almidx+jj*nlm+ell2*(ell2+1)/2+mm2];
+          d2_r += delta.real();
+          d2_i += delta.imag();
+        }
+      }
+    }
+    //now atomicAdd
+    atomicAdd(&discon2_r[ct_ang*ninner+ct_rad], d2_r);
+    atomicAdd(&discon2_i[ct_ang*ninner+ct_rad], d2_i);
+}
+
+// ======================================================= /
+
 
 //4PCF kernels
 //We have main (1) and orig(2) kernels for each of 3 precision modes
@@ -4163,6 +4620,216 @@ void gpu_add_to_power3_orig_mixed(double *d_threepcf, double *d_weight3pcf,
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
 
+//* ==== DISCONNECTED ADD TO POWER 4 METHODS ===== *//
+//DISCONNECTED 4PCF kernels
+//Only 1 kernel option for 3CF, 3 precision modes
+
+void gpu_add_to_power_discon1_orig(double *d_discon1_r, double *d_discon1_i,
+	double *d_weightdiscon, double *weights, int *lut_discon_ell,
+	int *lut_discon_mm, int nb, int nlm, int ndiscon1, int order, int np) {
+  //d_alm and d_almconj already allocated and computed
+  //d_discon1 too
+
+  // Invoke kernel
+  long threads = ndiscon1*np;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+std::cout << "THREADS " << threads << std::endl;
+
+  add_to_power_discon1_kernel_orig<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+	d_discon1_r, d_discon1_i, d_weightdiscon, weights, d_alm, d_almconj,
+	lut_discon_ell, lut_discon_mm, nb, nlm, ndiscon1, order, np,
+	pstart_discon); 
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon+=np;
+
+  // Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
+  //cudaFree will be called from NPCF.h 
+}
+
+void gpu_add_to_power_discon1_orig_float(float *f_discon1_r,
+        float *f_discon1_i, float *f_weightdiscon,
+	double *weights, int *lut_discon_ell, int *lut_discon_mm, int nb,
+	int nlm, int ndiscon1, int order, int np) {
+  //f_alm and f_almconj already allocated and computed
+  //f_discon1 too
+
+  // Invoke kernel
+  long threads = ndiscon1*np;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power_discon1_kernel_orig_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+        f_discon1_r, f_discon1_i, f_weightdiscon, weights, f_alm, f_almconj,
+	lut_discon_ell, lut_discon_mm, nb, nlm, ndiscon1, order, np,
+	pstart_discon);
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called from NPCF.h 
+}
+
+void gpu_add_to_power_discon1_orig_mixed(double *d_discon1_r,
+        double *d_discon1_i, double *d_weightdiscon,
+	double *weights, int *lut_discon_ell, int *lut_discon_mm, int nb,
+	int nlm, int ndiscon1, int order, int np) {
+  //f_alm and f_almconj already allocated and computed
+  //d_discon1 too
+
+  // Invoke kernel
+  long threads = ndiscon1*np;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power_discon1_kernel_orig_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+        d_discon1_r, d_discon1_i, d_weightdiscon, weights, f_alm, f_almconj,
+	lut_discon_ell, lut_discon_mm, nb, nlm, ndiscon1, order, np,
+	pstart_discon);
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called from NPCF.h 
+}
+
+//* ==== DISCON2 TERMS ===== *//
+
+void gpu_add_to_power_discon2_orig(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int nb, int nlm, int nouter, int order, int ninner, int np) {
+  //d_alm and d_almconj already allocated and computed
+  //d_discon1 too
+
+  // Invoke kernel
+  long threads = nouter*np; 
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+std::cout << "THREADS2 " << threads << std::endl;
+
+  add_to_power_discon2_kernel_orig<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+        d_discon2_r, d_discon2_i, d_weightdiscon, weights, d_alm, d_almconj,
+        lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
+	nb, nlm, nouter, order, ninner, np, pstart_discon2);
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon2+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called from NPCF.h 
+}
+
+void gpu_add_to_power_discon2_b(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double wp, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner) {
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+if (pstart_discon2 == 0) {
+std::cout << "D2B Threads = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
+}
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart_discon2*nb*nlm;
+  pstart_discon2++;
+
+  add_to_power_discon2_kernel_b<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+	d_discon2_r, d_discon2_i, d_weightdiscon, wp, d_alm, d_almconj,
+	lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
+	lut_discon_i, lut_discon_j,
+        nb, nlm, nouter, order, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power_discon2_final(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int np) {
+
+  // Invoke kernel
+  int npblocks = (np/DISCON2_PARTICLES_PER_THREAD)+1;
+  int nprnd = npblocks*DISCON2_PARTICLES_PER_THREAD;
+  long threads = ninner*nouter*npblocks;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power_discon2_kernel_final<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+        d_discon2_r, d_discon2_i, d_weightdiscon, weights, d_alm, d_almconj,
+        lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
+        lut_discon_i, lut_discon_j,
+        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2);
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon2+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power_discon2_final_float(float *f_discon2_r,
+	float *f_discon2_i, float *f_weightdiscon, double *weights,
+	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
+	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int np) {
+  //f_alm and f_almconj already allocated and computed
+  // Invoke kernel
+  int npblocks = (np/DISCON2_PARTICLES_PER_THREAD)+1;
+  int nprnd = npblocks*DISCON2_PARTICLES_PER_THREAD;
+  long threads = ninner*nouter*npblocks;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power_discon2_kernel_final_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+        f_discon2_r, f_discon2_i, f_weightdiscon, weights, f_alm, f_almconj,
+        lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
+        lut_discon_i, lut_discon_j,
+        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2);
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon2+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+void gpu_add_to_power_discon2_final_mixed(double *d_discon2_r, double *d_discon2_i,
+        double *d_weightdiscon, double *weights, int *lut_discon_ell1,
+        int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
+        int *lut_discon_i, int *lut_discon_j,
+        int nb, int nlm, int nouter, int order, int ninner, int np) {
+  //f_alm and f_almconj already allocated and computed
+  // Invoke kernel
+  int npblocks = (np/DISCON2_PARTICLES_PER_THREAD)+1;
+  int nprnd = npblocks*DISCON2_PARTICLES_PER_THREAD;
+  long threads = ninner*nouter*npblocks;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  add_to_power_discon2_kernel_final_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(
+        d_discon2_r, d_discon2_i, d_weightdiscon, weights, f_alm, f_almconj,
+        lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
+        lut_discon_i, lut_discon_j,
+        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2);
+
+  //increment pstart_discon in case of data chunking
+  pstart_discon2+=np;
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
 
 //* ==== ADD TO POWER 4 METHODS ===== *//
 //4PCF kernels
@@ -4580,6 +5247,175 @@ void gpu_free_memory3(float *threepcf, float *weight3pcf) {
 }
 
 // ======================================================= /
+//DISCONNECTED 4PCF LUTs
+void gpu_allocate_luts_discon1(int **p_lut_discon_ell, int **p_lut_discon_mm,
+        int size) {
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&(*p_lut_discon_ell), size*sizeof(int));
+  cudaMallocManaged(&(*p_lut_discon_mm), size*sizeof(int));
+}
+
+void gpu_allocate_discon1(double **p_discon1_r, double **p_discon1_i,
+        std::complex<double> *discon1, int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_discon1_r), size*sizeof(double));
+  cudaMallocManaged(&(*p_discon1_i), size*sizeof(double));
+  double *d_discon1_r = *(p_discon1_r);
+  double *d_discon1_i = *(p_discon1_i);
+  for (int i = 0; i < size; i++) {
+    d_discon1_r[i] = discon1[i].real();
+    d_discon1_i[i] = discon1[i].imag();
+  }
+}
+
+void gpu_allocate_weightdiscon(double **p_weightdiscon, double *weightdiscon,
+	int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_weightdiscon), size*sizeof(double));
+  double *d_weightdiscon = *(p_weightdiscon);
+  for (int i = 0; i < size; i++) d_weightdiscon[i] = weightdiscon[i];
+}
+
+void copy_discon1(double **p_discon1_r, double **p_discon1_i,
+        std::complex<double> *discon1, int size) {
+  double *d_discon1_r = *(p_discon1_r);
+  double *d_discon1_i = *(p_discon1_i);
+  for (int i = 0; i < size; i++) {
+    discon1[i] = {d_discon1_r[i], d_discon1_i[i]};
+  }
+}
+
+void gpu_allocate_discon1(float **p_discon1_r, float **p_discon1_i,
+        std::complex<double> *discon1, int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_discon1_r), size*sizeof(float));
+  cudaMallocManaged(&(*p_discon1_i), size*sizeof(float));
+  float *f_discon1_r = *(p_discon1_r);
+  float *f_discon1_i = *(p_discon1_i);
+  for (int i = 0; i < size; i++) {
+    f_discon1_r[i] = (float)discon1[i].real();
+    f_discon1_i[i] = (float)discon1[i].imag();
+  }
+}
+
+void gpu_allocate_weightdiscon(float **p_weightdiscon, double *weightdiscon,
+	int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_weightdiscon), size*sizeof(float));
+  float *f_weightdiscon = *(p_weightdiscon);
+  for (int i = 0; i < size; i++) f_weightdiscon[i] = (float)weightdiscon[i];
+}
+
+void copy_discon1(float **p_discon1_r, float **p_discon1_i,
+        std::complex<double> *discon1, int size) {
+  float *f_discon1_r = *(p_discon1_r);
+  float *f_discon1_i = *(p_discon1_i);
+  for (int i = 0; i < size; i++) {
+    discon1[i] = {f_discon1_r[i], f_discon1_i[i]};
+  }
+}
+
+//DISCON2 term
+void gpu_allocate_luts_discon2(int **p_lut_discon_ell1,
+        int **p_lut_discon_ell2, int **p_lut_discon_mm1,
+        int **p_lut_discon_mm2, int size) {
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&(*p_lut_discon_ell1), size*sizeof(int));
+  cudaMallocManaged(&(*p_lut_discon_ell2), size*sizeof(int));
+  cudaMallocManaged(&(*p_lut_discon_mm1), size*sizeof(int));
+  cudaMallocManaged(&(*p_lut_discon_mm2), size*sizeof(int));
+}
+
+void gpu_allocate_luts_discon2_inner(int **p_lut_discon_i,
+        int **p_lut_discon_j, int size) {
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&(*p_lut_discon_i), size*sizeof(int));
+  cudaMallocManaged(&(*p_lut_discon_j), size*sizeof(int));
+}
+
+void gpu_allocate_discon2(double **p_discon2_r, double **p_discon2_i,
+        std::complex<double> *discon2, int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_discon2_r), size*sizeof(double));
+  cudaMallocManaged(&(*p_discon2_i), size*sizeof(double));
+  double *d_discon2_r = *(p_discon2_r);
+  double *d_discon2_i = *(p_discon2_i);
+  for (int i = 0; i < size; i++) {
+    d_discon2_r[i] = discon2[i].real();
+    d_discon2_i[i] = discon2[i].imag();
+  }
+}
+
+void copy_discon2(double **p_discon2_r, double **p_discon2_i,
+        std::complex<double> *discon2, int size) {
+  double *d_discon2_r = *(p_discon2_r);
+  double *d_discon2_i = *(p_discon2_i);
+  for (int i = 0; i < size; i++) {
+    discon2[i] = {d_discon2_r[i], d_discon2_i[i]};
+  }
+}
+
+void gpu_allocate_discon2(float **p_discon2_r, float **p_discon2_i,
+        std::complex<double> *discon2, int size) {
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_discon2_r), size*sizeof(float));
+  cudaMallocManaged(&(*p_discon2_i), size*sizeof(float));
+  float *f_discon2_r = *(p_discon2_r);
+  float *f_discon2_i = *(p_discon2_i);
+  for (int i = 0; i < size; i++) {
+    f_discon2_r[i] = (float)discon2[i].real();
+    f_discon2_i[i] = (float)discon2[i].imag();
+  }
+}
+
+void copy_discon2(float **p_discon2_r, float **p_discon2_i,
+        std::complex<double> *discon2, int size) {
+  float *f_discon2_r = *(p_discon2_r);
+  float *f_discon2_i = *(p_discon2_i);
+  for (int i = 0; i < size; i++) {
+    discon2[i] = {f_discon2_r[i], f_discon2_i[i]};
+  }
+}
+
+
+
+// ======================================================= /
+
+//* ==== FREE MEMORY DISCONNECTED ==== *//
+
+void gpu_free_luts_discon1(int *lut_discon_ell, int *lut_discon_mm) {
+  cudaFree(lut_discon_ell);
+  cudaFree(lut_discon_mm);
+}
+
+void gpu_free_memory_discon1(double *d_discon1_r, double *d_discon1_i,
+        double *weightdiscon) {
+  cudaFree(d_discon1_r);
+  cudaFree(d_discon1_i);
+  cudaFree(weightdiscon);
+}
+
+void gpu_free_memory_discon1(float *f_discon1_r, float *f_discon1_i,
+        float *weightdiscon) {
+  cudaFree(f_discon1_r);
+  cudaFree(f_discon1_i);
+  cudaFree(weightdiscon);
+}
+
+//DISCON2 term
+void gpu_free_luts_discon2(int *lut_discon_ell1, int *lut_discon_ell2,
+        int *lut_discon_mm1, int *lut_discon_mm2, int *lut_discon_i,
+	int *lut_discon_j) {
+  cudaFree(lut_discon_ell1);
+  cudaFree(lut_discon_ell2);
+  cudaFree(lut_discon_mm1);
+  cudaFree(lut_discon_mm2);
+  cudaFree(lut_discon_i);
+  cudaFree(lut_discon_j);
+}
+
+
+// ======================================================= /
 //4PCF LUTs
 
 void gpu_allocate_luts4(int **p_lut4_l1, int **p_lut4_l2, int **p_lut4_l3,
@@ -4892,10 +5728,10 @@ void gpu_allocate_multipoles(double **p_msave, int **p_csave,
 
 void gpu_allocate_multipoles_fast(double **p_msave, int **p_csave,
         int **p_start_list, int **p_np_list, int **p_cellnums,
-        int nmult, int nbin, int np, int nmax, int nc) {
+        int nmult, int nbin, int np, int maxp, int nmax, int nc) {
   // Allocate Unified Memory – accessible from CPU or GPU
-  cudaMallocManaged(&(*p_msave), nmult*nbin*np*sizeof(double));
-  cudaMallocManaged(&(*p_csave), np*nbin*sizeof(int));
+  cudaMallocManaged(&(*p_msave), nmult*nbin*maxp*sizeof(double));
+  cudaMallocManaged(&(*p_csave), maxp*nbin*sizeof(int));
   cudaMallocManaged(&(*p_start_list), nc*sizeof(int));
   cudaMallocManaged(&(*p_np_list), nc*sizeof(int));
   cudaMallocManaged(&(*p_cellnums), np*sizeof(int));
@@ -5261,6 +6097,7 @@ void gpu_add_pairs_and_multipoles_periodic(double *m, double *posx,
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
+  //gpu_print_cuda_error();
 }
 
 void gpu_add_pairs_and_multipoles_periodic_fast(double *m, double *posx,
@@ -5309,6 +6146,7 @@ void gpu_add_pairs_and_multipoles_periodic_fast(double *m, double *posx,
 
   // Wait for GPU to finish before accessing on host
   //cudaDeviceSynchronize();
+  //gpu_print_cuda_error();
 }
 
 
@@ -5320,6 +6158,32 @@ void gpu_device_synchronize() {
 }
 
 void gpu_print_cuda_error() {
+/*
+       size_t free_byte ;
+
+        size_t total_byte ;
+
+        cudaError_t cuda_status = cudaMemGetInfo( &free_byte, &total_byte ) ;
+
+        if ( cudaSuccess != cuda_status ){
+
+            printf("Error: cudaMemGetInfo fails, %s \n", cudaGetErrorString(cuda_status) );
+
+            exit(1);
+
+        }
+
+double free_db = (double)free_byte ;
+
+        double total_db = (double)total_byte ;
+
+        double used_db = total_db - free_db ;
+
+        printf("GPU memory usage: used = %f, free = %f MB, total = %f MB\n",
+
+            used_db/1024.0/1024.0, free_db/1024.0/1024.0, total_db/1024.0/1024.0);
+*/
+
 cudaError_t err = cudaGetLastError();
 printf("CUDA Error: %s\n", cudaGetErrorString(err));
 }
