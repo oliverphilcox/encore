@@ -75,19 +75,22 @@ void gpu_add_to_power_discon2_final(double *d_discon2_r, double *d_discon2_i,
         double *d_weightdiscon, double *weights, int *lut_discon_ell1,
         int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
         int *lut_discon_i, int *lut_discon_j,
-        int nb, int nlm, int nouter, int order, int ninner, int np);
+        int nb, int nlm, int nouter, int order, int ninner, int np,
+	int qbalance, int qinvert);
 
 void gpu_add_to_power_discon2_final_float(float *f_discon2_r, float *f_discon2_i,
         float *f_weightdiscon, double *weights, int *lut_discon_ell1,
         int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
         int *lut_discon_i, int *lut_discon_j,
-        int nb, int nlm, int nouter, int order, int ninner, int np);
+        int nb, int nlm, int nouter, int order, int ninner, int np,
+	int qbalance, int qinvert);
 
 void gpu_add_to_power_discon2_final_mixed(double *d_discon2_r, double *d_discon2_i,
         double *d_weightdiscon, double *weights, int *lut_discon_ell1,
         int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
         int *lut_discon_i, int *lut_discon_j,
-        int nb, int nlm, int nouter, int order, int ninner, int np);
+        int nb, int nlm, int nouter, int order, int ninner, int np,
+	int qbalance, int qinvert);
 
 // ======================================================= /
 
@@ -177,6 +180,34 @@ void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf,
 	bool *lut5_odd, int *lut5_m1, int *lut5_m2, int *lut5_m3, int *lut5_n,
         int *lut5_zeta, int *lut5_i, int *lut5_j, int *lut5_k, int *lut5_l,
         float wp, int nb, int nlm, int nouter, int ninner, int nell5);
+
+// ======================================================= /
+
+//6PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
+//run main kernel gpu == 1
+void gpu_add_to_power6(double *d_sixpcf, double *d_weight6pcf,
+        int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+	int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+	int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+	int *lut6_k, int *lut6_l, int *lut6_m,
+        double wp, int nb, int nlm, int nouter, int ninner, int nell6);
+
+//float version of main kernel
+void gpu_add_to_power6_float(float *d_sixpcf, float *d_weight6pcf,
+        int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+        int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+	int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+	int *lut6_k, int *lut6_l, int *lut6_m,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell6);
+
+//mixed precision
+void gpu_add_to_power6_mixed(double *d_sixpcf, double *d_weight6pcf,
+        int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+        int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+        int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+        int *lut6_k, int *lut6_l, int *lut6_m,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell6);
 
 
 // ======================================================= /
@@ -337,7 +368,7 @@ void copy_fivepcf(float **p_fivepcf, double *fivepcf, int size);
 //free memory
 void gpu_free_luts(int *lut5_l1, int *lut5_l2, int *lut5_l12, int *lut5_l3,
         int *lut5_l4, bool *lut5_odd, int *lut5_n, int *lut5_zeta, int *lut5_i,
-	int *lut5_j, int *lut5_k, int *lut5_l);
+        int *lut5_j, int *lut5_k, int *lut5_l);
 
 void gpu_free_memory(double *fivepcf, double *weight5pcf);
 
@@ -345,6 +376,43 @@ void gpu_free_memory(float *fivepcf, float *weight5pcf);
 
 void gpu_free_memory_m(int *lut5_m1, int *lut5_m2, int *lut5_m3);
 
+// ======================================================= /
+
+//6PCF LUTs
+
+//allocate LUTs used in all kernels
+void gpu_allocate_luts6(int **p_lut6_l1, int **p_lut6_l2, int **p_lut6_l12,
+        int **p_lut6_l3, int **p_lut6_l123, int **p_lut6_l4,
+	int **p_lut6_l5, bool **p_lut6_odd, int **p_lut6_n,
+        int **p_lut6_zeta, int **p_lut6_i, int **p_lut6_j, int **p_lut6_k,
+        int **p_lut6_l, int **p_lut6_m, int nouter, int ninner);
+
+//allocate and copy sixpcf
+void gpu_allocate_sixpcf(double **p_sixpcf, double *sixpcf, int size);
+
+void gpu_allocate_sixpcf(float **p_sixpcf, double *sixpcf, int size);
+
+//allocate and copy weight6pcf
+void gpu_allocate_weight6pcf(double **p_weight6pcf, double *weight6pcf, int size);
+
+void gpu_allocate_weight6pcf(float **p_weight6pcf, double *weight6pcf, int size);
+
+//copy device array back to host for no memcpy
+void copy_sixpcf(double **p_sixpcf, double *sixpcf, int size);
+
+void copy_sixpcf(float **p_sixpcf, double *sixpcf, int size);
+
+// ======================================================= /
+
+//free memory
+void gpu_free_luts6(int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+	int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+	int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+	int *lut6_k, int *lut6_l, int *lut6_m);
+
+void gpu_free_memory6(double *sixpcf, double *weight6pcf);
+
+void gpu_free_memory6(float *sixpcf, float *weight6pcf);
 
 // ======================================================= /
 //  ALL ALM FUNCTIONS ARE HERE                             /
