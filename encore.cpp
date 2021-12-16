@@ -29,6 +29,7 @@
 // Big trouble if actual number exceeds this!
 // No problem if actual number is smaller.
 #define MAXTHREAD 40
+int nthreads = MAXTHREAD;
 
 typedef unsigned long long int uint64;
 
@@ -214,17 +215,22 @@ StoreMultipoles *smload, *smsave;
 NPCF npcf[MAXTHREAD];
 
 void zero_power() {
-    for (int t=0; t<MAXTHREAD; t++) npcf[t].reset();
+    printf("Initializing %d threads\n", nthreads);
+    //for (int t=0; t<MAXTHREAD; t++) npcf[t].reset();
+    for (int t=0; t<nthreads; t++) npcf[t].reset();
 }
 
 void sum_power() {
     // Just add up all of the threaded power into the zeroth element
-    for (int t=0; t<MAXTHREAD; t++)
+    //for (int t=0; t<MAXTHREAD; t++)
+    for (int t=0; t<nthreads; t++)
 	//printf("# Bin 0 counter for thread %2d: %9lld\n", t, npcf[t].bincounts[0]);
         printf("# Bin 0 counter for thread %2d: %d\n", t, npcf[t].bincounts[0]);
-    for (int t=1; t<MAXTHREAD; t++)
+    //for (int t=1; t<MAXTHREAD; t++)
+    for (int t=1; t<nthreads; t++)
         npcf[0].sum_power(npcf+t);
-    for (int t=1; t<MAXTHREAD; t++)
+    //for (int t=1; t<MAXTHREAD; t++)
+    for (int t=1; t<nthreads; t++)
         pairs[0].sum_power(pairs+t);
     return;
 }
@@ -415,6 +421,8 @@ int main(int argc, char *argv[]) {
   #endif
     printf("\n");
 
+    if (_gpumode > 0) nthreads = 1;
+
     InfileReadTime.Start();
     Particle *orig_p;
     Float3 shift;
@@ -497,7 +505,8 @@ int main(int argc, char *argv[]) {
 
     #ifdef DISCONNECTED
     // update some parameters
-    for(int i=0;i<MAXTHREAD;i++) npcf[i].load_params(qbalance, qinvert);
+    //for(int i=0;i<MAXTHREAD;i++) npcf[i].load_params(qbalance, qinvert);
+      for(int i=0;i<nthreads;i++) npcf[i].load_params(qbalance, qinvert);
     #endif
 
     Prologue.Stop();

@@ -9,9 +9,11 @@ NVCCFLAGS = -ccbin g++   -m64  -gencode arch=compute_60,code=sm_60  -gencode arc
 # FOR LINUX MACHINES WITH g++
 CXX = g++ -std=c++0x -ffast-math -fopenmp -lgomp -Wall -pg -g
 #Note - will have to figure out OPENMP vs CUDA - e.g. don't want 24 threads trying to each start a CUDA kernel
+#CXXFLAGS = -O3 -DGPU -DFOURPCF -DFIVEPCF -DSIXPCF ${CUFLAGS}
 #CXXFLAGS = -O3 -DOPENMP -DFOURPCF -DFIVEPCF
 #CXXFLAGS = -O3 -DGPU -DFOURPCF -DFIVEPCF ${CUFLAGS}
-CXXFLAGS = -O3 -DGPU -DFOURPCF ${CUFLAGS}
+#CXXFLAGS = -O3 -DGPU -DFOURPCF -DDISCONNECTED ${CUFLAGS}
+CXXFLAGS = -O3 -DGPU -DFOURPCF -DPERIODIC -DDISCONNECTED ${CUFLAGS}
 #CXXFLAGS = -O3 -DGPU ${CUFLAGS}
 
 # FOR LINUX MACHINES WITH INTEL
@@ -21,10 +23,12 @@ CXXFLAGS = -O3 -DGPU -DFOURPCF ${CUFLAGS}
 # extra code for parallelization reports
 #-qopt-report=5 -qopt-report-phase=vec -inline-level=0 -qopt-report-filter="NPCF.h,598-683" -qopt-report-file=$@.optrpt
 
+#MODES = -DGPU -DFOURPCF -DFIVEPCF -DSIXPCF
 #MODES = -DOPENMP -DFOURPCF -DFIVEPCF
 #MODES = -DGPU -DFOURPCF -DFIVEPCF
-MODES = -DGPU -DFOURPCF -DDISCONNECTED
+#MODES = -DGPU -DFOURPCF -DDISCONNECTED
 #MODES = -DGPU -DFOURPCF -DPERIODIC
+MODES = -DGPU -DFOURPCF -DPERIODIC -DDISCONNECTED
 #MODES = -DGPU -DFOURPCF
 #MODES = -DGPU
 # Add the -DPERIODIC flag to run with periodic boundary conditions

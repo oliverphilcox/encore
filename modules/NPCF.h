@@ -17,6 +17,7 @@ int dct = 0;
     bool generate_luts_discon = true; //disconnected 4PCF
     bool generate_luts4 = true;
     bool generate_luts = true; //5PCF
+    bool generate_luts6 = true; //6PCF
     //3PCF LUTs and arrays
     //declare LUTs as pointers -- we'll want to allocate and populate once
     int *lut3_i, *lut3_j, *lut3_ct;
@@ -59,6 +60,16 @@ int dct = 0;
     //declare pointers for float operations - only used if -float but
     //simply declaring them doesn't cost much
     float *f_weight5pcf, *f_fivepcf;
+
+    int *lut6_l1, *lut6_l2, *lut6_l12, *lut6_l3, *lut6_l123;
+    int *lut6_l4, *lut6_l5;
+    bool *lut6_odd;
+    int *lut6_n, *lut6_zeta;
+    int *lut6_i, *lut6_j, *lut6_k, *lut6_l, *lut6_m;
+    double *d_weight6pcf, *d_sixpcf;
+    //declare pointers for float operations - only used if -float but
+    //simply declaring them doesn't cost much
+    float *f_weight6pcf, *f_sixpcf;
 #endif
 
     int bincounts[NBIN];
@@ -121,8 +132,9 @@ int dct = 0;
     Float *sixpcf;
     // length of angular part of 6PCF
     int nell6;
+    //lengths of look up tables for indices
+    int nouter6, ninner6;
 #endif
-
 
     void make_map() {
 	// Construct the index number in our multipoles for x^a y^b z^c
@@ -229,7 +241,7 @@ int dct = 0;
 
     NPCF() {
 	     make_map();
-        reset();
+        //reset();
 	return;
     }
     ~NPCF() {
@@ -842,7 +854,7 @@ int dct = 0;
       gpu_add_to_power_discon2_final_float(f_discon2_r, f_discon2_i,
 	f_weightdiscon, weights, lut_discon_ell1, lut_discon_ell2,
 	lut_discon_mm1, lut_discon_mm2, lut_discon_i, lut_discon_j,
-	NBIN, NLM, nouter, ORDER, N3PCF, np);
+	NBIN, NLM, nouter, ORDER, N3PCF, np, qbalance, qinvert);
     } else if (_gpumixed) {
       gpu_add_to_power_discon1_orig_mixed(d_discon1_r, d_discon1_i,
 	d_weightdiscon, weights, lut_discon_ell, lut_discon_mm, 
@@ -851,7 +863,7 @@ int dct = 0;
       gpu_add_to_power_discon2_final_mixed(d_discon2_r, d_discon2_i,
 	d_weightdiscon, weights, lut_discon_ell1, lut_discon_ell2,
 	lut_discon_mm1, lut_discon_mm2, lut_discon_i, lut_discon_j,
-	NBIN, NLM, nouter, ORDER, N3PCF, np);
+	NBIN, NLM, nouter, ORDER, N3PCF, np, qbalance, qinvert);
     } else {
       gpu_add_to_power_discon1_orig(d_discon1_r, d_discon1_i, d_weightdiscon,
         weights, lut_discon_ell, lut_discon_mm, 
@@ -860,7 +872,7 @@ int dct = 0;
       gpu_add_to_power_discon2_final(d_discon2_r, d_discon2_i, d_weightdiscon,
         weights, lut_discon_ell1, lut_discon_ell2, lut_discon_mm1,
         lut_discon_mm2, lut_discon_i, lut_discon_j, NBIN, NLM, nouter,
-	ORDER, N3PCF, np);
+	ORDER, N3PCF, np, qbalance, qinvert);
     }
   }
   #endif
@@ -967,7 +979,6 @@ int dct = 0;
       // SECOND TERM
       // Accumulate only if first particle is a random.
       if (((wp<0)&&(qbalance))||(qinvert)){
-dct++;
         // Iterate over radial bins
         for (int ell1=0, n1=0, ct_ang=0; ell1<=ORDER; ell1++) {
           for (int mm1=-ell1; mm1<=ell1; mm1++, n1++) {
@@ -981,12 +992,10 @@ dct++;
                     if(mm2<0) {
                       for(int j=i+1; j<NBIN; j++, ct_rad++) {
 		        discon2[ct_ang*N3PCF+ct_rad] += tmp*almconj[j][ell2*(ell2+1)/2-mm2];
-//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(weight1,0);
                       }
 		    } else {
                       for(int j=i+1; j<NBIN; j++, ct_rad++) {
 		        discon2[ct_ang*N3PCF+ct_rad] += tmp*alm[j][ell2*(ell2+1)/2+mm2];
-//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(weight1,0);
                       }
 		    }
                   }
@@ -996,12 +1005,10 @@ dct++;
                     if(mm2<0) {
                       for(int j=i+1; j<NBIN; j++, ct_rad++) {
 		        discon2[ct_ang*N3PCF+ct_rad] += tmp*almconj[j][ell2*(ell2+1)/2-mm2];
-//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(0,weight1);
                       }
 		    } else {
                       for(int j=i+1; j<NBIN; j++, ct_rad++) {
 		        discon2[ct_ang*N3PCF+ct_rad] += tmp*alm[j][ell2*(ell2+1)/2+mm2];
-//discon2[ct_ang*N3PCF+ct_rad]+=std::complex<double>(0,weight1);
                       }
 		    }
                   }
@@ -1703,73 +1710,224 @@ dct++;
     int odd; // flag to see whether multiplet has odd-parity
   #endif
 
+#ifdef GPU
+  if (_gpumode == 0) generate_luts6 = false;
+  if (generate_luts6) {
+    //can only get here in _gpumode > 0
+    generate_luts6 = false;
+    n = 0;
+    nouter6 = 0;
+    ninner6 = N6PCF;
+
+    //first calculate nouter6 = LUT size
+    //ALWAYS use GPUMODE = 1 for SIXPCF
+    if (_gpumode > 0) {
+      //use primary GPU kernel
+      //generate LUTs here for primary GPU kernel
+      //ms are looped over in kernel so we have nell6*N6PCF threads
+      for(int l1=0;l1<=ORDER;l1++) {
+        for(int l2=0;l2<=ORDER;l2++) {
+          for(int l12=fabs(l1-l2);l12<=l1+l2;l12++) {
+            for(int l3=0;l3<=ORDER;l3++) {
+              for(int l123=fabs(l12-l3);l123<=l12+l3;l123++) {
+                for(int l4=0;l4<=ORDER;l4++) {
+                  for(int l5=fabs(l123-l4);l5<=fmin(ORDER,l123+l4);l5++) {
+                    // Skip any odd multipoles with odd parity
+                    #ifndef ALLPARITY
+                      if(pow(-1.,l1+l2+l3+l4+l5)==-1) continue; // skip odd parity and triangle violating bins
+                    #endif
+                    nouter6++;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    //malloc all look up tables (LUTs) - primary kernel
+    gpu_allocate_luts6(&lut6_l1, &lut6_l2, &lut6_l12, &lut6_l3,
+	&lut6_l123, &lut6_l4, &lut6_l5, &lut6_odd, &lut6_n,
+	&lut6_zeta, &lut6_i, &lut6_j, &lut6_k, &lut6_l,
+	&lut6_m, nouter6, ninner6);
+
+    //if not using memcpy, allocate pointers on device here
+    //copied from Weights.h
+    int size_w = (ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(2*ORDER+1)*(ORDER+1)*(ORDER+1)*(ORDER+1);
+    if (_gpufloat) {
+      //allocate float arrays and cast as floats when copying
+      gpu_allocate_weight6pcf(&f_weight6pcf, weight6pcf, size_w);
+      gpu_allocate_sixpcf(&f_sixpcf, sixpcf, nell6*N6PCF);
+    } else {
+      //normal mode - allocate GPU arrays and copy
+      gpu_allocate_weight6pcf(&d_weight6pcf, weight6pcf, size_w);
+      gpu_allocate_sixpcf(&d_sixpcf, sixpcf, nell6*N6PCF);
+    }
+
+    //populate LUTs
+    int iouter6 = 0;
+    n = 0; //DONT FORGET TO RESET N!
+
+    if (_gpumode > 0) {
+      //use primary GPU kernel
+      //generate LUTs here for primary GPU kernel
+      //ms are looped over in kernel so we have nell5*N5PCF threads
+      for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+        for(int l2=0; l2<=ORDER; l2++){
+          for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
+            for(int l3=0; l3<=ORDER; l3++){
+              for(int l123=fabs(l12-l3);l123<=l12+l3; l123++){
+                for(int l4=0; l4<=ORDER; l4++){
+                  for(int l5=fabs(l123-l4); l5<=fmin(ORDER,l123+l4); l5++, zeta_index+=N6PCF){
+                    #ifndef ALLPARITY
+                      if(pow(-1,l1+l2+l3+l4+l5)==-1) continue; // nb: these are also skipped in the weights matrix, so no need to update n
+                      lut6_odd[iouter6] = false;
+                    #else
+                      if(pow(-1,l1+l2+l3+l4+l5)==-1) lut6_odd[iouter6] = true; else lut6_odd[iouter6] = false; 
+                    #endif
+                    //update l luts here
+                    lut6_l1[iouter6] = l1;
+                    lut6_l2[iouter6] = l2;
+                    lut6_l12[iouter6] = l12;
+                    lut6_l3[iouter6] = l3;
+                    lut6_l123[iouter6] = l123;
+                    lut6_l4[iouter6] = l4;
+                    lut6_l5[iouter6] = l5;
+                    lut6_n[iouter6] = n; //this is the starting n for this GPU thread
+                    //GPU thread will then loop over ms
+                    lut6_zeta[iouter6] = zeta_index;
+                    //loop over ms - need to update n so that LUT has correct
+                    //n_init for all threads 
+
+                    // Iterate over all m1 (including negative)
+                    for(int m1=-l1; m1<=l1; m1++){
+                      // Iterate over all m2 (including negative)
+                      for(int m2=-l2; m2<=l2; m2++){
+                        if(abs(m1+m2)>l12) continue; // m12 condition
+                        // Iterate over m3 (including negative)
+                        for(int m3=-l3; m3<=l3; m3++){
+                          if(abs(m1+m2+m3)>l123) continue;
+                          // Iterate over m4 (including negative)
+                          for(int m4=-l4; m4<=l4; m4++){
+                            m5 = -m1-m2-m3-m4;
+                            if (m5<0) continue; // only need to use m5>=0
+                            if (m5>l5) continue; // this violates triangle conditions
+                            //simply increment n here
+                            n++;
+                          }
+                        }
+                      }
+                    }
+                    iouter6++; //now increment iouter6
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    //inner LUTs the same for all kernels
+    int iinner = 0;
+    for(int i=0; i<NBIN; i++){
+      for(int j=i+1; j<NBIN; j++){
+        for(int k=j+1; k<NBIN; k++){
+          for(int l=k+1; l<NBIN; l++){
+            for(int m=l+1; m<NBIN; m++){
+              lut6_i[iinner] = i;
+              lut6_j[iinner] = j;
+              lut6_k[iinner] = k;
+              lut6_l[iinner] = l;
+              lut6_m[iinner] = m;
+              iinner++;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Iterate over (l1, l2, (l12), l3, (l123), l4, l5) septuplet
   // NB: n indexes position in the 6PCF weight array, and must be carefully set
   // If ALLPARITY is not set, we only compute terms with even parity i.e. even l1+l2+l3+l4+l5. These are all real.
   // Else, we also compute odd parity term. These are purely imaginary and we store only the imaginary part.
 
   // Iterate over first multipole
-  n=0;
-  for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
-     tmp_l1 = l1*(l1+1)/2;
+  if (_gpumode > 0) {
+    //execute GPU kernel
+    if (_gpufloat) {
+      //float kernel
+      gpu_add_to_power6_float(f_sixpcf, f_weight6pcf,
+        lut6_l1, lut6_l2, lut6_l12, lut6_l3, lut6_l123, lut6_l4, lut6_l5,
+	lut6_odd, lut6_n, lut6_zeta, lut6_i, lut6_j, lut6_k, lut6_l, lut6_m,
+        (float)(wp), NBIN, NLM, nouter6, ninner6, nell6);
+    } else if (_gpumixed) {
+      gpu_add_to_power6_mixed(d_sixpcf, d_weight6pcf,
+        lut6_l1, lut6_l2, lut6_l12, lut6_l3, lut6_l123, lut6_l4, lut6_l5,
+	lut6_odd, lut6_n, lut6_zeta, lut6_i, lut6_j, lut6_k, lut6_l, lut6_m,
+        (float)wp, NBIN, NLM, nouter6, ninner6, nell6);
+    } else {
+      gpu_add_to_power6(d_sixpcf, d_weight6pcf,
+        lut6_l1, lut6_l2, lut6_l12, lut6_l3, lut6_l123, lut6_l4, lut6_l5,
+	lut6_odd, lut6_n, lut6_zeta, lut6_i, lut6_j, lut6_k, lut6_l, lut6_m,
+        wp, NBIN, NLM, nouter6, ninner6, nell6);
+    }
+  } else if (_gpumode == 0) {
+#endif
+    //run on CPU
+    n=0;
+    for(int l1=0, zeta_index=0; l1<=ORDER; l1++) {
+      tmp_l1 = l1*(l1+1)/2;
+      // Iterate over second multipole
+      for(int l2=0; l2<=ORDER; l2++){
+        tmp_l2 = l2*(l2+1)/2;
+        // Iterate over first internal multipole, avoiding bins violating triangle condition
+        // NB: we allow this to take any value allowed by the 3j conditions, not just <= ORDER
+        for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
+          // Iterate over third multipole
+          for(int l3=0; l3<=ORDER; l3++){
+            tmp_l3 = l3*(l3+1)/2;
+            // Iterate over second internal multipole, avoiding bins violating triangle condition
+            // NB: we allow this to take any value allowed by the 3j conditions, not just <= ORDER
+            for(int l123=fabs(l12-l3);l123<=l12+l3; l123++){
+              // Iterate over fourth multipole, avoiding bins violating triangle condition
+              for(int l4=0; l4<=ORDER; l4++){
+                tmp_l4 = l4*(l4+1)/2;
+                // Iterate over fifth multipole, avoiding bins violating triangle condition
+                for(int l5=fabs(l123-l4); l5<=fmin(ORDER,l123+l4); l5++, zeta_index+=N6PCF){
+                  #ifdef ALLPARITY
+                    if(pow(-1,l1+l2+l3+l4+l5)==-1) odd=1; else odd=0;
+                  #else
+                    // Skip any odd multipoles with odd parity
+                    if(pow(-1,l1+l2+l3+l4+l5)==-1) continue;
+                  #endif
 
-     // Iterate over second multipole
-     for(int l2=0; l2<=ORDER; l2++){
-       tmp_l2 = l2*(l2+1)/2;
+                  tmp_l5 = l5*(l5+1)/2;
 
-       // Iterate over first internal multipole, avoiding bins violating triangle condition
-       // NB: we allow this to take any value allowed by the 3j conditions, not just <= ORDER
-       for(int l12=fabs(l1-l2);l12<=l1+l2; l12++){
+                  // Iterate over all m1 (including negative)
+                  for(int m1=-l1; m1<=l1; m1++){
+                    // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+                    if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
+                    else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
 
-         // Iterate over third multipole
-         for(int l3=0; l3<=ORDER; l3++){
-           tmp_l3 = l3*(l3+1)/2;
+                    // Iterate over all m2 (including negative)
+                    for(int m2=-l2; m2<=l2; m2++){
+                      if(abs(m1+m2)>l12) continue; // m12 condition
+                      // Create temporary copy of a_l2m2, taking conjugate if necessary
+                      if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
+                      else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
 
-           // Iterate over second internal multipole, avoiding bins violating triangle condition
-           // NB: we allow this to take any value allowed by the 3j conditions, not just <= ORDER
-           for(int l123=fabs(l12-l3);l123<=l12+l3; l123++){
-
-             // Iterate over fourth multipole, avoiding bins violating triangle condition
-             for(int l4=0; l4<=ORDER; l4++){
-               tmp_l4 = l4*(l4+1)/2;
-
-               // Iterate over fifth multipole, avoiding bins violating triangle condition
-               for(int l5=fabs(l123-l4); l5<=fmin(ORDER,l123+l4); l5++, zeta_index+=N6PCF){
-                   #ifdef ALLPARITY
-                     if(pow(-1,l1+l2+l3+l4+l5)==-1) odd=1; else odd=0;
-                   #else
-                     // Skip any odd multipoles with odd parity
-                     if(pow(-1,l1+l2+l3+l4+l5)==-1) continue;
-                   #endif
-
-                   tmp_l5 = l5*(l5+1)/2;
-
-                   // Iterate over all m1 (including negative)
-                   for(int m1=-l1; m1<=l1; m1++){
-
-                     // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
-                     if (m1<0) for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*almconj[x][tmp_l1-m1];
-                     else for(int x=0;x<NBIN;x++) alm1wlist[x] = wp*alm[x][tmp_l1+m1];
-
-                     // Iterate over all m2 (including negative)
-                     for(int m2=-l2; m2<=l2; m2++){
-                       if(abs(m1+m2)>l12) continue; // m12 condition
-
-                       // Create temporary copy of a_l2m2, taking conjugate if necessary
-                       if (m2<0) for(int x=0;x<NBIN;x++) alm2list[x] = almconj[x][tmp_l2-m2];
-                       else for(int x=0;x<NBIN;x++) alm2list[x] = alm[x][tmp_l2+m2];
-
-                       // Iterate over m3 (including negative)
+                      // Iterate over m3 (including negative)
                       for(int m3=-l3; m3<=l3; m3++){
                         if(abs(m1+m2+m3)>l123) continue;
-
                         // Create temporary copy of a_l3m3, taking conjugate if necessary
                         if (m3<0) for(int x=0;x<NBIN;x++) alm3list[x] = almconj[x][tmp_l3-m3];
                         else for(int x=0;x<NBIN;x++) alm3list[x] = alm[x][tmp_l3+m3];
 
                         // Iterate over m4 (including negative)
-                       for(int m4=-l4; m4<=l4; m4++){
-
+                        for(int m4=-l4; m4<=l4; m4++){
                           m5 = -m1-m2-m3-m4;
                           if (m5<0) continue; // only need to use m5>=0
                           if (m5>l5) continue; // this violates triangle conditions
@@ -1789,40 +1947,31 @@ dct++;
                           // Now fill up the 6PCF.
                           // Iterate over first radial bin in lower hypertriangle
                           for(int i=0, bin_index=zeta_index; i<NBIN; i++){
-
                             alm1w = alm1wlist[i];
-
                             // Iterate over second bin
                             for(int j=i+1; j<NBIN; j++){
-
                               alm2 = alm2list[j]*alm1w;
-
                               // Iterate over third bin
                               for(int k=j+1; k<NBIN; k++){
-
                                 alm3 = alm3list[k]*alm2;
-
                                 // Iterate over fourth bin
                                 for(int l=k+1; l<NBIN; l++){
-
                                   alm4 = alm4list[l]*alm3;
-
                                   // Iterate over final bin and advance the 6PCF array counter
                                   for(int m=l+1; m<NBIN; m++){
-                                      // Add contribution to 6PCF array
-                                      #ifdef ALLPARITY
-                                        if(odd) sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).imag();
-                                        else sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
-                                      #else
-                                        sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
-                                      #endif
-                                    }
+                                    // Add contribution to 6PCF array
+                                    #ifdef ALLPARITY
+                                      if(odd) sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).imag();
+                                      else sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
+                                    #else
+                                      sixpcf[bin_index++] += weight*(alm4*alm[m][tmp_lm5]).real();
+                                    #endif
                                   }
                                 }
                               }
                             }
-                            //End of radial binning loops
                           }
+                          //End of radial binning loops
                         }
                       }
                     }
@@ -1833,6 +1982,10 @@ dct++;
           }
         }
       }
+    }
+#ifdef GPU
+  }
+#endif
   BinTimer6.Stop();
 }
 
@@ -1863,6 +2016,13 @@ dct++;
 	lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l);
       if (_gpufloat) gpu_free_memory(f_fivepcf, f_weight5pcf); else gpu_free_memory(d_fivepcf, d_weight5pcf);
       gpu_free_memory_m(lut5_m1, lut5_m2, lut5_m3);
+#endif
+
+#ifdef SIXPCF
+      gpu_free_luts6(lut6_l1, lut6_l2, lut6_l12, lut6_l3, lut6_l123, lut6_l4,
+	lut6_l5, lut6_odd, lut6_n, lut6_zeta, lut6_i, lut6_j, lut6_k,
+	lut6_l, lut6_m);
+      if (_gpufloat) gpu_free_memory6(f_sixpcf, f_weight6pcf); else gpu_free_memory6(d_fivepcf, d_weight6pcf);
 #endif
       gpu_free_memory_alms(!_gpufloat && !_gpumixed);
 #endif
@@ -1897,6 +2057,14 @@ dct++;
         copy_fivepcf(&f_fivepcf, fivepcf, nell5*N5PCF);
       } else {
         copy_fivepcf(&d_fivepcf, fivepcf, nell5*N5PCF);
+      }
+#endif
+
+#ifdef SIXPCF
+      if (_gpufloat) {
+        copy_sixpcf(&f_sixpcf, sixpcf, nell6*N6PCF);
+      } else {
+        copy_sixpcf(&d_sixpcf, sixpcf, nell6*N6PCF);
       }
 #endif
 #endif

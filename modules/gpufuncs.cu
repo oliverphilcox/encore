@@ -12,6 +12,7 @@ int pstart5 = 0;
 int pstart3 = 0;
 int pstart_discon = 0;
 int pstart_discon2 = 0;
+int pstart6 = 0;
 thrust::complex<double>* d_alm, *d_almconj; //define d_alm and d_almconj here
 thrust::complex<float>* f_alm, *f_almconj; //for use in float kernels
 
@@ -442,7 +443,7 @@ __global__ void add_to_power_discon2_kernel_final(double *discon2_r,
 	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
 	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
         int nb, int nlm, int nouter, int order, int ninner,
-	int np, int nprnd, int npblocks, int pstart) {
+	int np, int nprnd, int npblocks, int pstart, int qbalance, int qinvert) {
     //wp and almidx passed as scalars 
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -477,6 +478,9 @@ __global__ void add_to_power_discon2_kernel_final(double *discon2_r,
     for (int jp = ip0; jp < ipend; jp++) {
       //calc weight
       double wp = weights[jp+pstart];
+
+      if (!(((wp<0)&&(qbalance))||(qinvert))) continue;
+
       //calc indices inside of loop
       double weight1 = wp*weightdiscon[n1];
       double weight2 = weight1*weightdiscon[n2];
@@ -516,7 +520,7 @@ __global__ void add_to_power_discon2_kernel_final_float(float *discon2_r,
 	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
 	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
         int nb, int nlm, int nouter, int order, int ninner,
-	int np, int nprnd, int npblocks, int pstart) {
+	int np, int nprnd, int npblocks, int pstart, int qbalance, int qinvert) {
     //wp and almidx passed as scalars 
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -551,6 +555,9 @@ __global__ void add_to_power_discon2_kernel_final_float(float *discon2_r,
     for (int jp = ip0; jp < ipend; jp++) {
       //calc weight
       float wp = (float)weights[jp+pstart];
+
+      if (!(((wp<0)&&(qbalance))||(qinvert))) continue;
+
       //calc indices inside of loop
       float weight1 = wp*weightdiscon[n1];
       float weight2 = weight1*weightdiscon[n2];
@@ -590,7 +597,7 @@ __global__ void add_to_power_discon2_kernel_final_mixed(double *discon2_r,
 	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
 	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
         int nb, int nlm, int nouter, int order, int ninner,
-	int np, int nprnd, int npblocks, int pstart) {
+	int np, int nprnd, int npblocks, int pstart, int qbalance, int qinvert) {
     //wp and almidx passed as scalars 
     //thread index i
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -625,6 +632,9 @@ __global__ void add_to_power_discon2_kernel_final_mixed(double *discon2_r,
     for (int jp = ip0; jp < ipend; jp++) {
       //calc weight
       float wp = (float)weights[jp+pstart];
+
+      if (!(((wp<0)&&(qbalance))||(qinvert))) continue;
+
       //calc indices inside of loop
       float weight1 = wp*weightdiscon[n1];
       float weight2 = weight1*weightdiscon[n2];
@@ -1114,6 +1124,7 @@ __global__ void add_to_power5_kernel(double *fivepcf, double *weight5pcf,
     thrust::complex<double> alm3 = 0;
     int m4, tmp_lm4;
     double delta;
+
     //now loop over ms on this thread
     // Iterate over all m1 (including negative)
     //Put loops inside if (odd) block rather than other way around
@@ -1536,6 +1547,381 @@ __global__ void add_to_power5_kernel_orig_mixed(double *fivepcf,
     //double delta = weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real(); //even parity
     //atomicAdd(&fivepcf[bin_index], delta);
     if (odd) atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).imag()); else atomicAdd(&fivepcf[bin_index], weight*(alm3*alm[almidx+l*nlm+tmp_lm4]).real());
+}
+
+
+// ======================================================= /
+
+//6PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
+
+__global__ void add_to_power6_kernel(double *sixpcf, double *weight6pcf,
+	thrust::complex<double>* alm, thrust::complex<double> *almconj,
+	int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+	int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+	int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j, int *lut6_k,
+	int *lut6_l, int *lut6_m, double wp, int nlm, int nouter,
+	int ninner, int almidx) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= nouter * ninner) return;
+    //compute indices for LUTs
+    int iouter = i/ninner;
+    int iinner = i%ninner;
+    //calc bin_index
+    int bin_index = lut6_zeta[iouter]+iinner;
+    double pcf_element = sixpcf[bin_index]; // this element
+    //cald weight
+    double weight = weight6pcf[lut6_n[iouter]];
+    //outer loop indices
+    int l1 = lut6_l1[iouter];
+    int tmp_l1 = l1*(l1+1)/2;
+    int l2 = lut6_l2[iouter];
+    int tmp_l2 = l2*(l2+1)/2;
+    int l12 = lut6_l12[iouter];
+    int l3 = lut6_l3[iouter];
+    int l123 = lut6_l123[iouter];
+    int tmp_l3 = l3*(l3+1)/2;
+    int l4 = lut6_l4[iouter];
+    int tmp_l4 = l4*(l4+1)/2;
+    int l5 = lut6_l5[iouter];
+    int tmp_l5 = l5*(l5+1)/2;
+    bool odd = lut6_odd[iouter];
+    int n = lut6_n[iouter]; //this is the starting n for this thread
+    //inner loop indices
+    int ii = lut6_i[iinner];
+    int j = lut6_j[iinner];
+    int k = lut6_k[iinner];
+    int l = lut6_l[iinner];
+    int m = lut6_m[iinner];
+    //alms
+    thrust::complex<double> alm1w = 0;
+    thrust::complex<double> alm2 = 0;
+    thrust::complex<double> alm3 = 0;
+    thrust::complex<double> alm4 = 0;
+    int m5, tmp_lm5;
+    double delta;
+    //now loop over ms on this thread
+    // Iterate over all m1 (including negative)
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+	    if(abs(m1+m2+m3)>l123) continue;
+            // Create temporary copy of a_l3m3, taking conjugate if necessary
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            // Iterate over m4 (including negative)
+            for(int m4=-l4; m4<=l4; m4++){
+              m5 = -m1-m2-m3-m4;
+              if (m5<0) continue; // only need to use m5>=0
+              if (m5>l5) continue; // this violates triangle conditions
+              // Look up the relevant weight
+              weight = weight6pcf[n++];
+              if (weight==0) continue;
+              tmp_lm5 = tmp_l5+m5;
+              // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
+              // No conjugates needed for a_l5m5 since we fixed m5>=0!
+              // Note we add the coupling weight factor to a_l5m5
+              if (m4 < 0) alm4 = alm3*almconj[almidx+l*nlm+tmp_l4-m4]; else alm4 = alm3*alm[almidx+l*nlm+tmp_l4+m4];
+              //calculate delta
+              delta = weight*(alm4*alm[almidx+m*nlm+tmp_lm5]).imag(); //odd parity
+              //add to this element
+              pcf_element += delta;
+            }
+          }
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            if(abs(m1+m2+m3)>l123) continue;
+            // Create temporary copy of a_l3m3, taking conjugate if necessary
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            // Iterate over m4 (including negative)
+            for(int m4=-l4; m4<=l4; m4++){
+              m5 = -m1-m2-m3-m4;
+              if (m5<0) continue; // only need to use m5>=0
+              if (m5>l5) continue; // this violates triangle conditions
+              // Look up the relevant weight
+              weight = weight6pcf[n++];
+              if (weight==0) continue;
+              tmp_lm5 = tmp_l5+m5;
+              // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
+              // No conjugates needed for a_l5m5 since we fixed m5>=0!
+              // Note we add the coupling weight factor to a_l5m5
+              if (m4 < 0) alm4 = alm3*almconj[almidx+l*nlm+tmp_l4-m4]; else alm4 = alm3*alm[almidx+l*nlm+tmp_l4+m4];
+              //calculate delta
+              delta = weight*(alm4*alm[almidx+m*nlm+tmp_lm5]).real(); //even parity
+              //add to this element
+              pcf_element += delta;
+            }
+          }
+        }
+      }
+    }
+    sixpcf[bin_index] = pcf_element; //copy back to global memory 
+}
+
+__global__ void add_to_power6_kernel_float(float *sixpcf, float *weight6pcf,
+	thrust::complex<float>* alm, thrust::complex<float> *almconj,
+	int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+	int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+	int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j, int *lut6_k,
+	int *lut6_l, int *lut6_m, float wp, int nlm, int nouter,
+	int ninner, int almidx) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= nouter * ninner) return;
+    //compute indices for LUTs
+    int iouter = i/ninner;
+    int iinner = i%ninner;
+    //calc bin_index
+    int bin_index = lut6_zeta[iouter]+iinner;
+    float pcf_element = sixpcf[bin_index]; // this element
+    //cald weight
+    float weight = weight6pcf[lut6_n[iouter]];
+    //outer loop indices
+    int l1 = lut6_l1[iouter];
+    int tmp_l1 = l1*(l1+1)/2;
+    int l2 = lut6_l2[iouter];
+    int tmp_l2 = l2*(l2+1)/2;
+    int l12 = lut6_l12[iouter];
+    int l3 = lut6_l3[iouter];
+    int l123 = lut6_l123[iouter];
+    int tmp_l3 = l3*(l3+1)/2;
+    int l4 = lut6_l4[iouter];
+    int tmp_l4 = l4*(l4+1)/2;
+    int l5 = lut6_l5[iouter];
+    int tmp_l5 = l5*(l5+1)/2;
+    bool odd = lut6_odd[iouter];
+    int n = lut6_n[iouter]; //this is the starting n for this thread
+    //inner loop indices
+    int ii = lut6_i[iinner];
+    int j = lut6_j[iinner];
+    int k = lut6_k[iinner];
+    int l = lut6_l[iinner];
+    int m = lut6_m[iinner];
+    //alms
+    thrust::complex<float> alm1w = 0;
+    thrust::complex<float> alm2 = 0;
+    thrust::complex<float> alm3 = 0;
+    thrust::complex<float> alm4 = 0;
+    int m5, tmp_lm5;
+    float delta;
+    //now loop over ms on this thread
+    // Iterate over all m1 (including negative)
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+	    if(abs(m1+m2+m3)>l123) continue;
+            // Create temporary copy of a_l3m3, taking conjugate if necessary
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            // Iterate over m4 (including negative)
+            for(int m4=-l4; m4<=l4; m4++){
+              m5 = -m1-m2-m3-m4;
+              if (m5<0) continue; // only need to use m5>=0
+              if (m5>l5) continue; // this violates triangle conditions
+              // Look up the relevant weight
+              weight = weight6pcf[n++];
+              if (weight==0) continue;
+              tmp_lm5 = tmp_l5+m5;
+              // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
+              // No conjugates needed for a_l5m5 since we fixed m5>=0!
+              // Note we add the coupling weight factor to a_l5m5
+              if (m4 < 0) alm4 = alm3*almconj[almidx+l*nlm+tmp_l4-m4]; else alm4 = alm3*alm[almidx+l*nlm+tmp_l4+m4];
+              //calculate delta
+              delta = weight*(alm4*alm[almidx+m*nlm+tmp_lm5]).imag(); //odd parity
+              //add to this element
+              pcf_element += delta;
+            }
+          }
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            if(abs(m1+m2+m3)>l123) continue;
+            // Create temporary copy of a_l3m3, taking conjugate if necessary
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            // Iterate over m4 (including negative)
+            for(int m4=-l4; m4<=l4; m4++){
+              m5 = -m1-m2-m3-m4;
+              if (m5<0) continue; // only need to use m5>=0
+              if (m5>l5) continue; // this violates triangle conditions
+              // Look up the relevant weight
+              weight = weight6pcf[n++];
+              if (weight==0) continue;
+              tmp_lm5 = tmp_l5+m5;
+              // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
+              // No conjugates needed for a_l5m5 since we fixed m5>=0!
+              // Note we add the coupling weight factor to a_l5m5
+              if (m4 < 0) alm4 = alm3*almconj[almidx+l*nlm+tmp_l4-m4]; else alm4 = alm3*alm[almidx+l*nlm+tmp_l4+m4];
+              //calculate delta
+              delta = weight*(alm4*alm[almidx+m*nlm+tmp_lm5]).real(); //even parity
+              //add to this element
+              pcf_element += delta;
+            }
+          }
+        }
+      }
+    }
+    sixpcf[bin_index] = pcf_element; //copy back to global memory 
+}
+
+__global__ void add_to_power6_kernel_mixed(double *sixpcf, double *weight6pcf,
+	thrust::complex<float>* alm, thrust::complex<float> *almconj,
+	int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+	int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+	int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j, int *lut6_k,
+	int *lut6_l, int *lut6_m, float wp, int nlm, int nouter,
+	int ninner, int almidx) {
+    //thread index i
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= nouter * ninner) return;
+    //compute indices for LUTs
+    int iouter = i/ninner;
+    int iinner = i%ninner;
+    //calc bin_index
+    int bin_index = lut6_zeta[iouter]+iinner;
+    double pcf_element = sixpcf[bin_index]; // this element
+    //cald weight
+    double weight = weight6pcf[lut6_n[iouter]];
+    //outer loop indices
+    int l1 = lut6_l1[iouter];
+    int tmp_l1 = l1*(l1+1)/2;
+    int l2 = lut6_l2[iouter];
+    int tmp_l2 = l2*(l2+1)/2;
+    int l12 = lut6_l12[iouter];
+    int l3 = lut6_l3[iouter];
+    int l123 = lut6_l123[iouter];
+    int tmp_l3 = l3*(l3+1)/2;
+    int l4 = lut6_l4[iouter];
+    int tmp_l4 = l4*(l4+1)/2;
+    int l5 = lut6_l5[iouter];
+    int tmp_l5 = l5*(l5+1)/2;
+    bool odd = lut6_odd[iouter];
+    int n = lut6_n[iouter]; //this is the starting n for this thread
+    //inner loop indices
+    int ii = lut6_i[iinner];
+    int j = lut6_j[iinner];
+    int k = lut6_k[iinner];
+    int l = lut6_l[iinner];
+    int m = lut6_m[iinner];
+    //alms
+    thrust::complex<float> alm1w = 0;
+    thrust::complex<float> alm2 = 0;
+    thrust::complex<float> alm3 = 0;
+    thrust::complex<float> alm4 = 0;
+    int m5, tmp_lm5;
+    double delta;
+    //now loop over ms on this thread
+    // Iterate over all m1 (including negative)
+    //Put loops inside if (odd) block rather than other way around
+    if (odd) {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+	    if(abs(m1+m2+m3)>l123) continue;
+            // Create temporary copy of a_l3m3, taking conjugate if necessary
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            // Iterate over m4 (including negative)
+            for(int m4=-l4; m4<=l4; m4++){
+              m5 = -m1-m2-m3-m4;
+              if (m5<0) continue; // only need to use m5>=0
+              if (m5>l5) continue; // this violates triangle conditions
+              // Look up the relevant weight
+              weight = weight6pcf[n++];
+              if (weight==0) continue;
+              tmp_lm5 = tmp_l5+m5;
+              // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
+              // No conjugates needed for a_l5m5 since we fixed m5>=0!
+              // Note we add the coupling weight factor to a_l5m5
+              if (m4 < 0) alm4 = alm3*almconj[almidx+l*nlm+tmp_l4-m4]; else alm4 = alm3*alm[almidx+l*nlm+tmp_l4+m4];
+              //calculate delta
+              delta = weight*(alm4*alm[almidx+m*nlm+tmp_lm5]).imag(); //odd parity
+              //add to this element
+              pcf_element += delta;
+            }
+          }
+        }
+      }
+    } else {
+      for(int m1=-l1; m1<=l1; m1++){
+        // Create temporary copy of primary_weight*a_l1m1, taking conjugate if necessary [(-1)^m factor is absorbed into weight]
+        if (m1 < 0) alm1w = wp*almconj[almidx+ii*nlm+tmp_l1-m1]; else alm1w = wp*alm[almidx+ii*nlm+tmp_l1+m1];
+        // Iterate over all m2 (including negative)
+        for(int m2=-l2; m2<=l2; m2++){
+          if(abs(m1+m2)>l12) continue; // m12 condition
+          // Create temporary copy of a_l2m2, taking conjugate if necessary
+          if (m2 < 0) alm2 = alm1w*almconj[almidx+j*nlm+tmp_l2-m2]; else alm2 = alm1w*alm[almidx+j*nlm+tmp_l2+m2];
+          // Iterate over m3 (including negative)
+          for(int m3=-l3; m3<=l3; m3++){
+            if(abs(m1+m2+m3)>l123) continue;
+            // Create temporary copy of a_l3m3, taking conjugate if necessary
+            if (m3 < 0) alm3 = alm2*almconj[almidx+k*nlm+tmp_l3-m3]; else alm3 = alm2*alm[almidx+k*nlm+tmp_l3+m3];
+            // Iterate over m4 (including negative)
+            for(int m4=-l4; m4<=l4; m4++){
+              m5 = -m1-m2-m3-m4;
+              if (m5<0) continue; // only need to use m5>=0
+              if (m5>l5) continue; // this violates triangle conditions
+              // Look up the relevant weight
+              weight = weight6pcf[n++];
+              if (weight==0) continue;
+              tmp_lm5 = tmp_l5+m5;
+              // Create temporary copies of a_l4m4 and a_l5m5, taking conjugates if necessary
+              // No conjugates needed for a_l5m5 since we fixed m5>=0!
+              // Note we add the coupling weight factor to a_l5m5
+              if (m4 < 0) alm4 = alm3*almconj[almidx+l*nlm+tmp_l4-m4]; else alm4 = alm3*alm[almidx+l*nlm+tmp_l4+m4];
+              //calculate delta
+              delta = weight*(alm4*alm[almidx+m*nlm+tmp_lm5]).real(); //even parity
+              //add to this element
+              pcf_element += delta;
+            }
+          }
+        }
+      }
+    }
+    sixpcf[bin_index] = pcf_element; //copy back to global memory 
 }
 
 
@@ -4756,7 +5142,8 @@ void gpu_add_to_power_discon2_final(double *d_discon2_r, double *d_discon2_i,
         double *d_weightdiscon, double *weights, int *lut_discon_ell1,
         int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
         int *lut_discon_i, int *lut_discon_j,
-        int nb, int nlm, int nouter, int order, int ninner, int np) {
+        int nb, int nlm, int nouter, int order, int ninner, int np,
+	int qbalance, int qinvert) {
 
   // Invoke kernel
   int npblocks = (np/DISCON2_PARTICLES_PER_THREAD)+1;
@@ -4768,7 +5155,8 @@ void gpu_add_to_power_discon2_final(double *d_discon2_r, double *d_discon2_i,
         d_discon2_r, d_discon2_i, d_weightdiscon, weights, d_alm, d_almconj,
         lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
         lut_discon_i, lut_discon_j,
-        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2);
+        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2,
+	qbalance, qinvert);
 
   //increment pstart_discon in case of data chunking
   pstart_discon2+=np;
@@ -4782,7 +5170,8 @@ void gpu_add_to_power_discon2_final_float(float *f_discon2_r,
 	float *f_discon2_i, float *f_weightdiscon, double *weights,
 	int *lut_discon_ell1, int *lut_discon_ell2, int *lut_discon_mm1,
 	int *lut_discon_mm2, int *lut_discon_i, int *lut_discon_j,
-        int nb, int nlm, int nouter, int order, int ninner, int np) {
+        int nb, int nlm, int nouter, int order, int ninner, int np,
+	int qbalance, int qinvert) {
   //f_alm and f_almconj already allocated and computed
   // Invoke kernel
   int npblocks = (np/DISCON2_PARTICLES_PER_THREAD)+1;
@@ -4794,7 +5183,8 @@ void gpu_add_to_power_discon2_final_float(float *f_discon2_r,
         f_discon2_r, f_discon2_i, f_weightdiscon, weights, f_alm, f_almconj,
         lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
         lut_discon_i, lut_discon_j,
-        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2);
+        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2,
+	qbalance, qinvert);
 
   //increment pstart_discon in case of data chunking
   pstart_discon2+=np;
@@ -4808,7 +5198,8 @@ void gpu_add_to_power_discon2_final_mixed(double *d_discon2_r, double *d_discon2
         double *d_weightdiscon, double *weights, int *lut_discon_ell1,
         int *lut_discon_ell2, int *lut_discon_mm1, int *lut_discon_mm2,
         int *lut_discon_i, int *lut_discon_j,
-        int nb, int nlm, int nouter, int order, int ninner, int np) {
+        int nb, int nlm, int nouter, int order, int ninner, int np,
+	int qbalance, int qinvert) {
   //f_alm and f_almconj already allocated and computed
   // Invoke kernel
   int npblocks = (np/DISCON2_PARTICLES_PER_THREAD)+1;
@@ -4820,7 +5211,8 @@ void gpu_add_to_power_discon2_final_mixed(double *d_discon2_r, double *d_discon2
         d_discon2_r, d_discon2_i, d_weightdiscon, weights, f_alm, f_almconj,
         lut_discon_ell1, lut_discon_ell2, lut_discon_mm1, lut_discon_mm2,
         lut_discon_i, lut_discon_j,
-        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2);
+        nb, nlm, nouter, order, ninner, np, nprnd, npblocks, pstart_discon2,
+	qbalance, qinvert);
 
   //increment pstart_discon in case of data chunking
   pstart_discon2+=np;
@@ -5141,7 +5533,6 @@ void gpu_add_to_power5_orig_float(float *d_fivepcf, float *d_weight5pcf,
 
   add_to_power5_kernel_orig_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_fivepcf,
         d_weight5pcf, f_alm, f_almconj, lut5_l1,lut5_l2,
-
         lut5_l3, lut5_l4, lut5_odd, lut5_m1, lut5_m2, lut5_m3,
         lut5_n, lut5_zeta, lut5_i, lut5_j, lut5_k, lut5_l,
         wp, nlm, nouter, ninner, almidx);
@@ -5177,6 +5568,100 @@ void gpu_add_to_power5_orig_mixed(double *d_fivepcf, double *d_weight5pcf,
   //cudaDeviceSynchronize();
   //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
 }
+
+//* ==== ADD TO POWER 6 METHODS ===== *//
+//6PCF kernels
+//We have main (1) and orig(2) kernels for each of 3 precision modes
+//run main kernel gpu == 1
+void gpu_add_to_power6(double *d_sixpcf, double *d_weight6pcf,
+        int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+        int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+        int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+        int *lut6_k, int *lut6_l, int *lut6_m,
+        double wp, int nb, int nlm, int nouter, int ninner, int nell6) {
+  //d_alm and d_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart6*nb*nlm;
+  pstart6++;
+
+if (count == 2) {
+count++;
+std::cout << "Threads6 = " << threads << " Nouter = " << nouter << " Ninner = " << ninner << std::endl;
+}
+
+  add_to_power6_kernel<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_sixpcf,
+        d_weight6pcf, d_alm, d_almconj, lut6_l1, lut6_l2, lut6_l12, lut6_l3,
+	lut6_l123, lut6_l4, lut6_l5, lut6_odd, lut6_n, lut6_zeta, lut6_i,
+	lut6_j, lut6_k, lut6_l, lut6_m,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
+  //gpu_print_cuda_error();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//float version of main kernel
+void gpu_add_to_power6_float(float *d_sixpcf, float *d_weight6pcf,
+        int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+        int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+        int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+        int *lut6_k, int *lut6_l, int *lut6_m,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell6) {
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart6*nb*nlm;
+  pstart6++;
+
+  add_to_power6_kernel_float<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_sixpcf,
+        d_weight6pcf, f_alm, f_almconj, lut6_l1, lut6_l2, lut6_l12, lut6_l3,
+        lut6_l123, lut6_l4, lut6_l5, lut6_odd, lut6_n, lut6_zeta, lut6_i,
+        lut6_j, lut6_k, lut6_l, lut6_m,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
+//mixed precision
+void gpu_add_to_power6_mixed(double *d_sixpcf, double *d_weight6pcf,
+        int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+        int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+        int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+        int *lut6_k, int *lut6_l, int *lut6_m,
+        float wp, int nb, int nlm, int nouter, int ninner, int nell6) {
+  //f_alm and f_almconj already allocated and computed
+
+  // Invoke kernel
+  long threads = ninner*nouter;
+  int blocksPerGrid = (threads+THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK;
+
+  //calculate index of d_alm for this particle
+  int almidx = pstart6*nb*nlm;
+  pstart6++;
+
+  add_to_power6_kernel_mixed<<<blocksPerGrid, THREADS_PER_BLOCK>>>(d_sixpcf,
+        d_weight6pcf, f_alm, f_almconj, lut6_l1, lut6_l2, lut6_l12, lut6_l3,
+        lut6_l123, lut6_l4, lut6_l5, lut6_odd, lut6_n, lut6_zeta, lut6_i,
+        lut6_j, lut6_k, lut6_l, lut6_m,
+        wp, nlm, nouter, ninner, almidx);
+
+  // Wait for GPU to finish before accessing on host
+  //cudaDeviceSynchronize();
+  //cudaFree will be called for alms from NPCF.h via gpu_free_memory_alms 
+}
+
 
 // ======================================================= /
 //  ALL MEMORY FUNCTIONS ARE HERE                          /
@@ -5614,6 +6099,106 @@ void gpu_free_memory_m(int *lut5_m1, int *lut5_m2, int *lut5_m3) {
   cudaFree(lut5_m1);
   cudaFree(lut5_m2);
   cudaFree(lut5_m3);
+}
+
+// ======================================================= /
+//6PCF LUTs
+
+void gpu_allocate_luts6(int **p_lut6_l1, int **p_lut6_l2, int **p_lut6_l12,
+        int **p_lut6_l3, int **p_lut6_l123, int **p_lut6_l4,
+        int **p_lut6_l5, bool **p_lut6_odd, int **p_lut6_n,
+        int **p_lut6_zeta, int **p_lut6_i, int **p_lut6_j, int **p_lut6_k,
+        int **p_lut6_l, int **p_lut6_m, int nouter, int ninner) {
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&(*p_lut6_l1), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l2), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l12), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l3), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l123), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l4), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l5), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_odd), nouter*sizeof(bool));
+  cudaMallocManaged(&(*p_lut6_n), nouter*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_zeta), nouter*sizeof(int));
+
+  cudaMallocManaged(&(*p_lut6_i), ninner*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_j), ninner*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_k), ninner*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_l), ninner*sizeof(int));
+  cudaMallocManaged(&(*p_lut6_m), ninner*sizeof(int));
+}
+
+void gpu_allocate_sixpcf(double **p_sixpcf, double *sixpcf, int size) {
+  //*p_sixpcf = (double *)malloc(sizeof(double)*size);
+  //cudaMalloc(&(*p_sixpcf), size*sizeof(double));
+  //cudaMemcpy((*p_sixpcf), sixpcf, size, cudaMemcpyHostToDevice);
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_sixpcf), size*sizeof(double));
+  double *d_sixpcf = *(p_sixpcf);
+  for (int i = 0; i < size; i++) d_sixpcf[i] = sixpcf[i];
+}
+
+void gpu_allocate_weight6pcf(double **p_weight6pcf, double *weight6pcf, int size) {
+  //cudaMalloc(&(*p_weight6pcf), size*sizeof(double));
+  //cudaMemcpy((*p_weight6pcf), weight6pcf, size, cudaMemcpyHostToDevice);
+  //use MallocManaged because of weirdness with cudaMemcpy not seeming to work with weight4pcf
+  cudaMallocManaged(&(*p_weight6pcf), size*sizeof(double));
+  double *d_weight6pcf = *(p_weight6pcf);
+  for (int i = 0; i < size; i++) d_weight6pcf[i] = weight6pcf[i];
+}
+
+void copy_sixpcf(double **p_sixpcf, double *sixpcf, int size) {
+  cudaMemcpy(sixpcf, (*p_sixpcf), size*sizeof(double), cudaMemcpyDeviceToHost);
+}
+
+void gpu_allocate_sixpcf(float **p_sixpcf, double *sixpcf, int size) {
+  cudaMallocManaged(&(*p_sixpcf), size*sizeof(float));
+  float *f_sixpcf = *(p_sixpcf);
+  for (int i = 0; i < size; i++) f_sixpcf[i] = (float)sixpcf[i];
+}
+
+void gpu_allocate_weight6pcf(float **p_weight6pcf, double *weight6pcf, int size) {
+  cudaMallocManaged(&(*p_weight6pcf), size*sizeof(float));
+  float *f_weight6pcf = *(p_weight6pcf);
+  for (int i = 0; i < size; i++) f_weight6pcf[i] = (float)weight6pcf[i];
+}
+
+void copy_sixpcf(float **p_sixpcf, double *sixpcf, int size) {
+  float *f_sixpcf = *(p_sixpcf);
+  for (int i = 0; i < size; i++) sixpcf[i] = (double)f_sixpcf[i];
+}
+
+//* ==== FREE MEMORY 6 ==== *//
+
+void gpu_free_luts6(int *lut6_l1, int *lut6_l2, int *lut6_l12, int *lut6_l3,
+        int *lut6_l123, int *lut6_l4, int *lut6_l5, bool *lut6_odd,
+        int *lut6_n, int *lut6_zeta, int *lut6_i, int *lut6_j,
+        int *lut6_k, int *lut6_l, int *lut6_m) {
+  cudaFree(lut6_l1);
+  cudaFree(lut6_l2);
+  cudaFree(lut6_l12);
+  cudaFree(lut6_l3);
+  cudaFree(lut6_l123);
+  cudaFree(lut6_l4);
+  cudaFree(lut6_l5);
+  cudaFree(lut6_odd);
+  cudaFree(lut6_n);
+  cudaFree(lut6_zeta);
+  cudaFree(lut6_i);
+  cudaFree(lut6_j);
+  cudaFree(lut6_k);
+  cudaFree(lut6_l);
+  cudaFree(lut6_m);
+}
+
+void gpu_free_memory6(double *sixpcf, double *weight6pcf) {
+  cudaFree(sixpcf);
+  cudaFree(weight6pcf);
+}
+
+void gpu_free_memory6(float *sixpcf, float *weight6pcf) {
+  cudaFree(sixpcf);
+  cudaFree(weight6pcf);
 }
 
 // ======================================================= /

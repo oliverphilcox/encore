@@ -313,7 +313,7 @@ void compute_multipoles(Grid *grid, Float rmin, Float rmax) {
 	  if(thread==0) sphtime.Stop();
 
           if(thread==0) powertime.Start();
-            gpu_device_synchronize(); //synchronize before copying data
+          gpu_device_synchronize(); //synchronize before copying data
 	  //call 3PCF add_to_power here
 	  npcf[thread].add_to_power3_gpu(weights, icnt);
           //gpu_device_synchronize(); //synchronize before copying data
