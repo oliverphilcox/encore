@@ -2,12 +2,14 @@
 
 C++ code for estimating the isotropic NPCF multipoles for an arbitrary survey geometry in O(N^2) time, with optional GPU support. This is based on code by Daniel Eisenstein, implementing the algorithm of [Philcox et al. 2021](http://arxiv.org/abs/2105.08722), and uses their conventions. This currently features support for the isotropic 2PCF, 3PCF, 4PCF, 5PCF and 6PCF, with the option to subtract the Gaussian 4PCF contributions at the estimator level. For the 4PCF, 5PCF and 6PCF algorithms, the runtime is dominated by sorting the spherical harmonics into bins, which has complexity O(N_galaxy x N_bins^3 x N_ell^5) [4PCF], O(N_galaxy x N_bins^4 x N_ell^8) [5PCF] or O(N_galaxy x N_bins^5 x N_ell^11) [6PCF]. We caution that the higher-point functions will be necessarily slow to compute unless N_bins and N_ell are small.
 
+**Note of Caution**: We do not provide routines to subtract off the *disconnected* part of the 5- and 6-point function. The measured 5PCF and 6PCF thus include contributions from lower-point functions, and should not be used in any joint analyses (since they are highly degenerate with e.g., the 2PCF).
+
 #### Requirements:
 - C++ compiler (tested with g++ 4.8.5)
 - *(Optional)*: AVX compatibility.
 - *(Optional)*: OpenMP for multiprocessing.
-- *(Optional*): Python (tested with 2.7 & 3.6) with numpy and sympy installed for file summation and edge correction.
-- *(Optional*): CUDA (7.0 or higher) for GPU computations.
+- *(Optional)*: Python (tested with 2.7 & 3.6) with numpy and sympy installed for file summation and edge correction.
+- *(Optional)*: CUDA (7.0 or higher) for GPU computations.
 
 #### Authors:
 - Oliver Philcox (Princeton / IAS, [ohep2@cantab.ac.uk](mailto:ohep2@cantab.ac.uk))
@@ -53,3 +55,4 @@ The *encore* algorithm and code has been used in the following publications:
 - "Efficient Computation of N-point Correlation Functions in D Dimensions", Philcox & Slepian (2021, [arXiv](https://arxiv.org/abs/2106.10278), PNAS)
 - "Analytic Gaussian Covariance Matrices for Galaxy N-Point Correlation Functions", Hou et al. (2021, [arXiv](https://arxiv.org/abs/2108.01714), PRD)
 - "A First Detection of the Connected 4-Point Correlation Function of Galaxies Using the BOSS CMASS Sample", Philcox et al. (2021, [arXiv](https://arxiv.org/abs/2108.01670), PRD)
+- "Probing Parity-Violation with the Four-Point Correlation Function of BOSS Galaxies", Philcox (2022, [arXiv](https://arxiv.org/abs/2206.04227), PRD)
